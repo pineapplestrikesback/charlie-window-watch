@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#d66f4a">
+    <meta name="description" content="Help Charlie guard six windows, build her Patrol Book, outsmart shushes with Sneaky Switches, and power up with chicken.">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <title>Charlie: Window Watch</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="styles.css?v=responsive-share-1">
+    <script src="game.js?v=responsive-share-1" type="module"></script>
+  </head>
+
+  <body>
+    <a class="skip-link" href="#mainContent">Skip to the game</a>
+
+    <div class="page-shell">
+      <header class="site-header" aria-label="Game title and settings">
+        <a class="mini-brand" href="#mainContent" aria-label="Charlie: Window Watch">
+          <span class="mini-brand__mark" aria-hidden="true">C</span>
+          <span>
+            <strong>Charlie</strong>
+            <small>Window Watch</small>
+          </span>
+        </a>
+
+        <div class="settings-cluster" aria-label="Game settings">
+          <button id="relaxedToggle" class="setting-button" type="button" role="switch" aria-checked="false" aria-label="Relaxed mode: off">
+            <span aria-hidden="true">☁</span>
+            <span class="setting-button__label">Relaxed</span>
+            <span class="switch-state">Off</span>
+          </button>
+          <button id="soundToggle" class="setting-button" type="button" role="switch" aria-checked="true" aria-label="Sound: on">
+            <span aria-hidden="true">♪</span>
+            <span class="setting-button__label">Sound</span>
+            <span class="switch-state">On</span>
+          </button>
+          <button id="motionToggle" class="setting-button" type="button" role="switch" aria-checked="true" aria-label="Motion effects: on">
+            <span aria-hidden="true">✦</span>
+            <span class="setting-button__label">Motion</span>
+            <span class="switch-state">On</span>
+          </button>
+          <button id="pauseButton" class="icon-button" type="button" aria-label="Pause game" aria-controls="pauseCurtain">
+            <span aria-hidden="true">Ⅱ</span>
+          </button>
+        </div>
+      </header>
+
+      <main id="mainContent" tabindex="-1">
+        <section class="game-panel" aria-labelledby="play-heading">
+          <h1 id="play-heading" class="visually-hidden">Charlie: Window Watch browser game</h1>
+
+          <div class="hud" aria-label="Current game status">
+            <div class="hud__primary">
+              <div class="status-chip status-chip--time">
+                <span class="status-chip__label">Watch</span>
+                <strong id="timeValue">01:30</strong>
+              </div>
+              <div class="status-chip">
+                <span class="status-chip__label">Phase</span>
+                <strong id="phaseValue">Quiet morning</strong>
+              </div>
+              <div class="status-chip">
+                <span class="status-chip__label">Score</span>
+                <strong id="scoreValue">0</strong>
+              </div>
+              <div class="status-chip status-chip--quiet">
+                <span id="bestLabel" class="status-chip__label">Classic best</span>
+                <strong id="highScoreValue">0</strong>
+              </div>
+            </div>
+
+            <div class="hud__meters">
+              <div class="compact-meter" role="meter" aria-labelledby="safetyLabel safetyValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+                <div class="compact-meter__top">
+                  <span id="safetyLabel"><span class="meter-symbol meter-symbol--shield" aria-hidden="true">◆</span> Safety</span>
+                  <strong id="safetyValue">100%</strong>
+                </div>
+                <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--safe" style="width: 100%"></span></div>
+              </div>
+              <div class="compact-meter" role="meter" aria-labelledby="patienceLabel patienceValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+                <div class="compact-meter__top">
+                  <span id="patienceLabel"><span class="meter-symbol" aria-hidden="true">●</span> Patience</span>
+                  <strong id="patienceValue">100%</strong>
+                </div>
+                <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--patience" style="width: 100%"></span></div>
+              </div>
+              <div class="combo-badge" aria-label="Guarding combo">
+                <span>Streak</span>
+                <strong id="comboValue">×1</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="objective-strip" aria-live="polite">
+            <span class="objective-strip__case" id="currentPatrolLabel">Classic patrol</span>
+            <p><span aria-hidden="true">◎</span> <strong>Current order:</strong> <span id="activeObjective">Keep the flat safe until the watch ends.</span></p>
+          </div>
+
+          <nav class="room-tabs" aria-label="Choose a room">
+            <button class="room-tab" type="button" data-room="0" aria-pressed="false">
+              <span class="room-tab__number">01</span>
+              <span>Office</span>
+              <span class="room-tab__details"><small>1 window</small><span id="condition-office" class="room-condition">Clear</span></span>
+            </button>
+            <button class="room-tab is-active" type="button" data-room="1" aria-pressed="true">
+              <span class="room-tab__number">02</span>
+              <span>Living room</span>
+              <span class="room-tab__details"><small>3 windows</small><span id="condition-living" class="room-condition">Clear</span></span>
+            </button>
+            <button class="room-tab" type="button" data-room="2" aria-pressed="false">
+              <span class="room-tab__number">03</span>
+              <span>Kitchen</span>
+              <span class="room-tab__details"><small>2 windows</small><span id="condition-kitchen" class="room-condition">Clear</span></span>
+            </button>
+          </nav>
+
+          <div class="canvas-wrap">
+            <p id="gameInstructions" class="visually-hidden">Use A and D to change rooms, Left and Right Arrow to choose a window, Space to bark, and C to give Charlie chicken. The large controls below provide the same actions on touch screens.</p>
+            <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="A D ArrowLeft ArrowRight Space C">
+              Your browser needs canvas support to play Charlie: Window Watch.
+            </canvas>
+
+            <div id="ownerBubble" class="owner-bubble" role="status" aria-live="polite" hidden>
+              <span class="owner-bubble__eyebrow">Owner attention</span>
+              <strong id="ownerBubbleTitle">Charlie… shush!</strong>
+              <span id="ownerBubbleText">Time for a tactical room change.</span>
+              <label class="owner-quiet-meter" for="ownerQuietProgress">
+                <span>Quiet response</span>
+                <progress id="ownerQuietProgress" max="100" value="0">0%</progress>
+              </label>
+              <small id="ownerChoiceHint" class="owner-choice-hint">Relocate, wait quietly, or find sound cover.</small>
+            </div>
+
+            <div id="caption" class="game-caption">Living-room patrol ready. Three windows, zero nonsense.</div>
+            <div id="toast" class="toast" hidden>Good guard!</div>
+
+            <section id="startScreen" class="screen-layer title-screen" aria-labelledby="title-heading">
+              <div class="title-screen__photo">
+                <img src="assets/photos/charlie-hero.jpg" alt="Charlie, a German Shepherd, ready for window patrol">
+                <span class="photo-stamp" aria-hidden="true">Top Dog<br>Security</span>
+              </div>
+              <div class="title-screen__copy">
+                <p class="eyebrow">A tiny game about a very serious job</p>
+                <h2 id="title-heading"><span>Charlie:</span> Window Watch</h2>
+                <p class="title-screen__subtitle">Guard the flat. Outsmart the shush.</p>
+                <p class="title-screen__bio">Shelter sweetheart. Road-trip veteran. Window security professional.</p>
+                <div id="profileSummary" class="career-summary" aria-label="Charlie's career summary">
+                  <span><small>Current rank</small><strong id="profileRank">Self-Appointed Security Officer</strong></span>
+                  <span><small>Paw stamps</small><strong id="profileStamps">0 / 18</strong></span>
+                </div>
+                <div class="title-actions">
+                  <button id="campaignButton" class="button button--primary button--large title-action--campaign" type="button" aria-controls="patrolBriefingScreen">
+                    <span>Continue campaign</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                  <button id="startButton" class="button button--paper" type="button">
+                    <span>Classic patrol</span>
+                  </button>
+                  <button id="dailyButton" class="button button--paper" type="button" aria-controls="patrolBriefingScreen">
+                    <span>Today's patrol</span>
+                  </button>
+                  <button id="patrolBookButton" class="button button--paper" type="button" aria-controls="patrolBookScreen">
+                    <span>Patrol Book</span>
+                  </button>
+                </div>
+                <p class="tiny-note"><span aria-hidden="true">✦</span> Best played with sharp eyes and an emergency piece of chicken. <button id="howButton" class="text-button" type="button" aria-controls="briefingScreen">How to guard</button></p>
+              </div>
+            </section>
+
+            <section id="briefingScreen" class="screen-layer briefing-screen" role="dialog" aria-modal="true" aria-labelledby="briefing-heading" aria-describedby="briefing-summary" tabindex="-1" hidden>
+              <div class="briefing-card">
+                <button id="briefingBack" class="back-button" type="button" aria-label="Return to title screen">← Back</button>
+                <p class="eyebrow">Patrol briefing no. 05</p>
+                <h2 id="briefing-heading">Six windows. One guardian. No suspicious business.</h2>
+                <p id="briefing-summary" class="visually-hidden">Learn how to identify danger, guard the correct window, dodge the owner's shush, and use chicken treats.</p>
+
+                <div class="briefing-grid">
+                  <article class="brief-step">
+                    <span class="brief-step__number">1</span>
+                    <div>
+                      <h3>Spot the danger</h3>
+                      <p>Watch for the <strong>warning triangle</strong> outside. Friendly visitors have a <strong>round marker</strong>—let them pass.</p>
+                    </div>
+                  </article>
+                  <article class="brief-step">
+                    <span class="brief-step__number">2</span>
+                    <div>
+                      <h3>Face the right window</h3>
+                      <p>Move between rooms and windows, then bark while the visitor is in view. Accurate guarding builds a combo; random woofs test the owner's patience.</p>
+                    </div>
+                  </article>
+                  <article class="brief-step">
+                    <span class="brief-step__number">3</span>
+                    <div>
+                      <h3>Outsmart the “shush”</h3>
+                      <p>A shush means the owner is <strong>Listening</strong> in that room. Stay quiet for 2.5 seconds to recover Patience, relocate for one <strong>Sneaky Switch</strong>, or hide a bark beneath TV or kettle sound cover.</p>
+                    </div>
+                  </article>
+                  <article class="brief-step brief-step--chicken">
+                    <span class="brief-step__number" aria-hidden="true">♥</span>
+                    <div>
+                      <h3>Deploy chicken</h3>
+                      <p>Fill the drumstick meter by guarding well. A chicken treat restores patience and gives Charlie a brief burst of laser focus.</p>
+                    </div>
+                  </article>
+                </div>
+
+                <div class="control-legend" aria-label="Controls">
+                  <div>
+                    <span class="control-legend__label">Keyboard</span>
+                    <p><kbd>A</kbd><kbd>D</kbd> rooms &nbsp; <kbd>←</kbd><kbd>→</kbd> windows &nbsp; <kbd>Space</kbd> bark &nbsp; <kbd>C</kbd> chicken</p>
+                  </div>
+                  <div>
+                    <span class="control-legend__label">Touch</span>
+                    <p>Use the large room, window, bark and chicken buttons beneath the game.</p>
+                  </div>
+                </div>
+
+                <button id="beginButton" class="button button--primary button--large" type="button">Begin the watch <span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+
+            <section id="patrolBookScreen" class="screen-layer patrol-book-screen" role="dialog" aria-modal="true" aria-labelledby="patrol-book-heading" aria-describedby="patrol-book-summary" tabindex="-1" hidden>
+              <div class="patrol-book-card">
+                <header class="patrol-book-header">
+                  <div>
+                    <p class="eyebrow">Official household security record</p>
+                    <h2 id="patrol-book-heading">Charlie's Patrol Book</h2>
+                    <p id="patrol-book-summary">Choose a case, collect its three paw stamps, and rise through the extremely official ranks.</p>
+                  </div>
+                  <button id="patrolBookClose" class="back-button" type="button" aria-label="Close Patrol Book">Close <span aria-hidden="true">×</span></button>
+                </header>
+
+                <section class="book-rank-card" aria-labelledby="bookRankTitle">
+                  <div class="book-rank-card__seal" aria-hidden="true">C</div>
+                  <div class="book-rank-card__copy">
+                    <span class="book-label">Current rank</span>
+                    <h3 id="bookRankTitle">Self-Appointed Security Officer</h3>
+                    <div id="bookRankProgress" class="rank-progress" role="progressbar" aria-label="Progress to Charlie's next rank" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0">
+                      <span class="rank-progress__fill" style="width: 0%"></span>
+                    </div>
+                    <small>Every paw stamp counts toward the next promotion.</small>
+                  </div>
+                  <div class="book-stamp-total">
+                    <span>Paw stamps</span>
+                    <strong id="bookStampCount">0 / 18</strong>
+                  </div>
+                </section>
+
+                <section class="book-section" aria-labelledby="book-cases-heading">
+                  <div class="book-section__heading">
+                    <h3 id="book-cases-heading">Case files</h3>
+                    <p>Complete a patrol to open the next file. Mastery stamps are optional—and very prestigious.</p>
+                  </div>
+                  <div id="bookPatrolGrid" class="patrol-card-grid">
+                    <p class="book-empty-state">Charlie is opening the case files…</p>
+                  </div>
+                </section>
+
+                <div class="book-ledger-grid">
+                  <section class="book-section book-section--ledger" aria-labelledby="book-stats-heading">
+                    <div class="book-section__heading">
+                      <h3 id="book-stats-heading">Lifetime record</h3>
+                    </div>
+                    <dl id="bookLifetimeStats" class="lifetime-stats">
+                      <div><dt>Patrols</dt><dd>0</dd></div>
+                      <div><dt>Threats guarded</dt><dd>0</dd></div>
+                      <div><dt>Sneaky switches</dt><dd>0</dd></div>
+                      <div><dt>Perfect crimes</dt><dd>0</dd></div>
+                    </dl>
+                  </section>
+                  <section class="book-section book-section--gallery" aria-labelledby="book-gallery-heading">
+                    <div class="book-section__heading">
+                      <h3 id="book-gallery-heading">Personnel gallery</h3>
+                      <p>Career milestones unlock decorations and classified Charlie photographs.</p>
+                    </div>
+                    <div id="bookGallery" class="book-gallery">
+                      <div class="gallery-placeholder" aria-label="A locked personnel reward"><span aria-hidden="true">?</span><small>First reward locked</small></div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </section>
+
+            <section id="patrolBriefingScreen" class="screen-layer patrol-briefing-screen" role="dialog" aria-modal="true" aria-labelledby="patrolBriefingTitle" aria-describedby="patrolBriefingDescription patrolSpecialRule" tabindex="-1" hidden>
+              <div class="patrol-briefing-card">
+                <button id="patrolBriefingBack" class="back-button" type="button" aria-label="Return to Patrol Book">← Patrol Book</button>
+                <p id="patrolBriefingEyebrow" class="eyebrow">Case file 01</p>
+                <h2 id="patrolBriefingTitle">The Regular Shift</h2>
+                <p id="patrolBriefingDescription" class="patrol-briefing-description">A familiar route through six windows. Keep the flat safe and show the neighbourhood who is in charge.</p>
+
+                <div class="patrol-briefing-layout">
+                  <section class="patrol-orders" aria-labelledby="patrol-orders-heading">
+                    <h3 id="patrol-orders-heading">Paw-stamp orders</h3>
+                    <ol id="patrolObjectives" class="patrol-objective-list">
+                      <li><span class="objective-stamp" aria-hidden="true">○</span><span>Complete the patrol.</span></li>
+                      <li><span class="objective-stamp" aria-hidden="true">○</span><span>Finish with at least 80% safety.</span></li>
+                      <li><span class="objective-stamp" aria-hidden="true">○</span><span>Perform three Sneaky Switches.</span></li>
+                    </ol>
+                    <aside id="patrolSpecialRule" class="special-rule">
+                      <span class="book-label">Special condition</span>
+                      <strong>Standard household rules</strong>
+                      <p>Attention rises when Charlie is heard. Relocate or stay quiet after a shush.</p>
+                    </aside>
+                  </section>
+
+                  <fieldset class="collar-tag-fieldset">
+                    <legend>Choose Charlie's collar tag</legend>
+                    <p>Tags are tactical sidegrades, not permanent power boosts.</p>
+                    <div id="collarTagChoices" class="collar-tag-choices">
+                      <label class="collar-tag-card is-selected">
+                        <input type="radio" name="collar-tag" value="standard" checked>
+                        <span class="collar-tag-card__icon" aria-hidden="true">C</span>
+                        <span><strong>Official issue</strong><small>Charlie's dependable everyday setup.</small></span>
+                      </label>
+                    </div>
+                  </fieldset>
+                </div>
+
+                <button id="beginPatrolButton" class="button button--primary button--large patrol-briefing-start" type="button">Begin this patrol <span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+
+            <section id="resultScreen" class="screen-layer result-screen" role="dialog" aria-modal="true" aria-labelledby="resultTitle" aria-describedby="resultSubtitle" tabindex="-1" hidden>
+              <div class="result-card">
+                <div class="result-card__photo">
+                  <img id="resultPhoto" src="assets/photos/charlie-rest.jpg" alt="Charlie relaxing after her patrol">
+                  <span class="result-ribbon">Patrol complete</span>
+                </div>
+                <div class="result-card__copy">
+                  <p class="eyebrow">End-of-watch report</p>
+                  <p id="resultMode" class="result-mode">Classic patrol</p>
+                  <h2 id="resultTitle">The flat is safe.</h2>
+                  <p id="resultSubtitle">Charlie has thoroughly informed the neighbourhood.</p>
+                  <div class="final-score">
+                    <span>Patrol score</span>
+                    <strong id="resultScore">0</strong>
+                  </div>
+                  <dl class="result-stats">
+                    <div><dt>Threats guarded</dt><dd id="resultGuards">0</dd></div>
+                    <div><dt>Tactical switches</dt><dd id="resultSwitches">0</dd></div>
+                    <div><dt>Total barks</dt><dd id="resultBarks">0</dd></div>
+                    <div><dt>Best combo</dt><dd id="resultCombo">×1</dd></div>
+                  </dl>
+                  <section class="result-objective-report" aria-labelledby="result-objectives-heading">
+                    <h3 id="result-objectives-heading">Paw-stamp orders</h3>
+                    <div id="resultObjectives" class="result-objectives"><p>No campaign orders on a Classic Patrol.</p></div>
+                  </section>
+                  <div id="resultReward" class="result-reward" role="status">
+                    <span aria-hidden="true">✦</span>
+                    <p><strong>Patrol recorded</strong><small>Campaign rewards appear here.</small></p>
+                  </div>
+                  <div class="result-rank">
+                    <div><span id="resultRankLabel">Next rank</span><strong id="resultRankTitle">Certified Curtain Inspector</strong></div>
+                    <div id="resultRankProgress" class="rank-progress rank-progress--result" role="progressbar" aria-label="Progress to Charlie's next rank" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0">
+                      <span class="rank-progress__fill" style="width: 0%"></span>
+                    </div>
+                  </div>
+                  <div class="result-actions">
+                    <button id="nextPatrolButton" class="button button--primary button--large" type="button">Next case <span aria-hidden="true">→</span></button>
+                    <button id="restartButton" class="button button--paper" type="button">Patrol again <span aria-hidden="true">↻</span></button>
+                    <button id="bookFromResultButton" class="button button--paper" type="button" aria-controls="patrolBookScreen">Patrol Book</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="pauseCurtain" class="screen-layer pause-screen" role="dialog" aria-modal="true" aria-labelledby="pause-heading" aria-describedby="pause-description" tabindex="-1" hidden>
+              <div class="pause-card">
+                <span class="pause-card__icon" aria-hidden="true">Ⅱ</span>
+                <p class="eyebrow">Treat break</p>
+                <h2 id="pause-heading">Patrol paused</h2>
+                <p id="pause-description">The suspicious elements have agreed to wait.</p>
+                <button id="resumeButton" class="button button--primary button--large" type="button">Resume patrol</button>
+              </div>
+            </section>
+          </div>
+
+          <div id="gameStateSummary" class="threat-roster" aria-label="Current visitor and target status">
+            <strong>Watching:</strong> Living room centre window <span aria-hidden="true">•</span> No visitors outside.
+          </div>
+
+          <div class="action-dock" aria-label="Game controls" aria-describedby="gameInstructions">
+            <div class="action-dock__group action-dock__group--rooms">
+              <span class="dock-label">Change room</span>
+              <div class="button-pair">
+                <button id="prevRoomButton" class="game-control" type="button" aria-label="Previous room" aria-keyshortcuts="A" aria-controls="gameCanvas">
+                  <span aria-hidden="true">A</span><small>Room</small>
+                </button>
+                <button id="nextRoomButton" class="game-control" type="button" aria-label="Next room" aria-keyshortcuts="D" aria-controls="gameCanvas">
+                  <span aria-hidden="true">D</span><small>Room</small>
+                </button>
+              </div>
+            </div>
+            <div class="action-dock__group action-dock__group--windows">
+              <span class="dock-label">Choose window</span>
+              <div class="button-pair">
+                <button id="prevWindowButton" class="game-control" type="button" aria-label="Previous window" aria-keyshortcuts="ArrowLeft" aria-controls="gameCanvas">
+                  <span aria-hidden="true">←</span><small>Window</small>
+                </button>
+                <button id="nextWindowButton" class="game-control" type="button" aria-label="Next window" aria-keyshortcuts="ArrowRight" aria-controls="gameCanvas">
+                  <span aria-hidden="true">→</span><small>Window</small>
+                </button>
+              </div>
+            </div>
+            <button id="barkButton" class="bark-button" type="button" aria-keyshortcuts="Space" aria-controls="gameCanvas">
+              <span class="bark-button__sound" aria-hidden="true">WOOF!</span>
+              <span>Bark <kbd>Space</kbd></span>
+            </button>
+            <div class="chicken-control">
+              <div class="chicken-control__meter" role="progressbar" aria-labelledby="chickenLabel chickenValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="chicken-control__label"><span id="chickenLabel"><span aria-hidden="true">♨</span> Chicken</span><strong id="chickenValue">0%</strong></div>
+                <div class="chicken-track" aria-hidden="true"><span id="chickenFill" style="width: 0%"></span></div>
+              </div>
+              <button id="chickenButton" class="chicken-button" type="button" aria-keyshortcuts="C" aria-controls="gameCanvas" disabled>
+                Give treat <kbd>C</kbd>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="flat-status" aria-labelledby="flat-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Live from the flat</p>
+              <h2 id="flat-heading">Owner Attention monitor</h2>
+            </div>
+            <p>Every audible bark raises Attention in its room. Empty rooms cool much faster than the room Charlie occupies.</p>
+          </div>
+
+          <div class="noise-grid">
+            <article id="noise-office" class="noise-card" data-level="quiet">
+              <div class="noise-card__top"><span class="noise-card__index">01</span><span class="noise-status">Quiet</span></div>
+              <h3>Office</h3>
+              <p>Desk, computer, one strategic window.</p>
+              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            </article>
+            <article id="noise-living" class="noise-card is-current" data-level="quiet">
+              <div class="noise-card__top"><span class="noise-card__index">02</span><span class="noise-status">Quiet</span></div>
+              <h3>Living room</h3>
+              <p>TV wall, sofa lookout, three grand windows.</p>
+              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            </article>
+            <article id="noise-kitchen" class="noise-card" data-level="quiet">
+              <div class="noise-card__top"><span class="noise-card__index">03</span><span class="noise-status">Quiet</span></div>
+              <h3>Kitchen</h3>
+              <p>Two windows. Strong chance of chicken.</p>
+              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="field-notes" aria-labelledby="field-notes-heading">
+          <div>
+            <p class="eyebrow">Charlie's field notes</p>
+            <h2 id="field-notes-heading">A good guard knows when to bark—and when to change rooms.</h2>
+          </div>
+          <ol>
+            <li><span>01</span> Warning triangle means suspicious: bark.</li>
+            <li><span>02</span> Round marker means friendly: observe politely.</li>
+            <li><span>03</span> During Listening, go quiet to restore Patience or relocate for a Sneaky Switch.</li>
+            <li><span>04</span> TV scenes and kettle whistles can cover a bark completely: the Perfect Crime.</li>
+          </ol>
+        </section>
+      </main>
+
+      <footer>
+        <p>Handcrafted for Charlie <span aria-hidden="true">♥</span> Chief Window Officer, age five-ish.</p>
+        <p>No actual neighbours were barked at in the making of this game.</p>
+      </footer>
+    </div>
+
+    <div id="announcement" class="visually-hidden" aria-live="assertive" aria-atomic="true"></div>
+  </body>
+</html>
