@@ -8,8 +8,8 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Charlie: Window Watch</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=responsive-share-1">
-    <script src="game.js?v=responsive-share-1" type="module"></script>
+    <link rel="stylesheet" href="styles.css?v=charlie-pet-v2-2">
+    <script src="game.js?v=charlie-pet-v2-2" type="module"></script>
   </head>
 
   <body>
@@ -57,7 +57,7 @@
                 <span class="status-chip__label">Watch</span>
                 <strong id="timeValue">01:30</strong>
               </div>
-              <div class="status-chip">
+              <div class="status-chip status-chip--phase">
                 <span class="status-chip__label">Phase</span>
                 <strong id="phaseValue">Quiet morning</strong>
               </div>
@@ -327,6 +327,7 @@
               <div class="result-card">
                 <div class="result-card__photo">
                   <img id="resultPhoto" src="assets/photos/charlie-rest.jpg" alt="Charlie relaxing after her patrol">
+                  <canvas id="resultPetCanvas" class="result-card__pet" width="192" height="208" aria-hidden="true"></canvas>
                   <span class="result-ribbon">Patrol complete</span>
                 </div>
                 <div class="result-card__copy">

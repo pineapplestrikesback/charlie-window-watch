@@ -23,6 +23,13 @@ import {
   isPatrolUnlocked,
 } from "./progression.js";
 import {
+  PET_CELL_HEIGHT,
+  PET_CELL_WIDTH,
+  getPetAnimationDuration,
+  getPetAnimationFrame,
+  getPetLookFrame,
+} from "./pet-animation.js";
+import {
   AUDIBILITY,
   DEFAULT_ACOUSTICS,
   applyRoomAttention,
@@ -146,6 +153,7 @@ const ui = {
   currentPatrolLabel: $("currentPatrolLabel"),
   activeObjective: $("activeObjective"),
   resultPhoto: $("resultPhoto"),
+  resultPet: $("resultPetCanvas"),
   resultMode: $("resultMode"),
   resultTitle: $("resultTitle"),
   resultSubtitle: $("resultSubtitle"),
@@ -213,9 +221,15 @@ const FRIENDS = [
 
 const dogImage = new Image();
 let dogReady = false;
-dogImage.addEventListener("load", () => { dogReady = true; });
-dogImage.addEventListener("error", () => { dogReady = false; });
-dogImage.src = "assets/generated/charlie-sprite.png";
+dogImage.addEventListener("load", () => {
+  dogReady = true;
+  canvasWrap.dataset.petAtlas = `${dogImage.naturalWidth}x${dogImage.naturalHeight}`;
+});
+dogImage.addEventListener("error", () => {
+  dogReady = false;
+  canvasWrap.dataset.petAtlas = "error";
+});
+dogImage.src = "assets/pets/charlie/spritesheet-v2-46865c3d5305.webp";
 
 const safeGet = (key, fallback) => {
   try {
@@ -263,11 +277,86 @@ const activeSounds = new Set();
 const failedSoundUrls = new Set();
 const lastSoundChoice = new Map();
 let previousFocus = null;
+let resultAnimationStartedAt = 0;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const choose = (items) => items[Math.floor(Math.random() * items.length)];
 const roomForWindow = (windowId) => WINDOWS[windowId].room;
 const currentWindow = () => WINDOWS[game?.selectedWindow ?? 2];
+
+function setPetReaction(state, options = {}) {
+  if (!game) return;
+  const duration = options.duration ?? getPetAnimationDuration(state);
+  game.petReaction = {
+    state,
+    startedAt: game.elapsed,
+    until: game.elapsed + duration,
+  };
+}
+
+function resolvePetPose() {
+  const idle = (source = "idle") => ({
+    ...getPetAnimationFrame("idle", game?.elapsed ?? 0, 0, {
+      loop: true,
+      reducedMotion: !settings.motion,
+    }),
+    source,
+  });
+  if (!game || !settings.motion) return idle("reduced-motion");
+
+  const travelDistance = game.targetX - game.charlieX;
+  if (Math.abs(travelDistance) > 1.2) {
+    const state = travelDistance >= 0 ? "running-right" : "running-left";
+    return {
+      ...getPetAnimationFrame(state, game.elapsed, game.movementStartedAt, { loop: true }),
+      source: "movement",
+    };
+  }
+
+  if (game.petReaction && game.elapsed < game.petReaction.until) {
+    return {
+      ...getPetAnimationFrame(
+        game.petReaction.state,
+        game.elapsed,
+        game.petReaction.startedAt,
+        { loop: false },
+      ),
+      source: "reaction",
+    };
+  }
+
+  if (game.listening.active) {
+    return {
+      ...getPetAnimationFrame("waiting", game.elapsed, game.listening.active.startedAt, { loop: true }),
+      source: "shush",
+    };
+  }
+
+  if (game.superUntil > game.elapsed) {
+    return {
+      ...getPetAnimationFrame("running", game.elapsed, game.superStartedAt, { loop: true }),
+      source: "super-sniffer",
+    };
+  }
+
+  const selectedEntity = game.entities
+    .filter((entity) => entity.windowId === game.selectedWindow)
+    .sort((left, right) => right.progress - left.progress)[0];
+  const lookTarget = selectedEntity
+    ? { x: WINDOWS[selectedEntity.windowId].x, y: 18 + selectedEntity.progress * 92, source: "visitor" }
+    : game.lookTarget && game.elapsed < game.lookTarget.until
+      ? { ...game.lookTarget, source: "pointer" }
+      : null;
+  if (lookTarget) {
+    return {
+      ...getPetLookFrame(lookTarget.x - game.charlieX, lookTarget.y - 484, { deadzone: 18 }),
+      source: lookTarget.source,
+    };
+  }
+
+  return idle();
+}
+
 const formatTime = (seconds) => {
   const total = Math.max(0, Math.ceil(seconds));
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
@@ -357,6 +446,7 @@ function newGame(options = {}) {
     chicken: 0,
     chickenGoal,
     superUntil: 0,
+    superStartedAt: 0,
     spawnIn: 1.2,
     nextDirectorAt: 4,
     nextId: 1,
@@ -381,6 +471,10 @@ function newGame(options = {}) {
     targetX: WINDOWS[2].x,
     facing: 1,
     moving: 0,
+    movementStartedAt: 0,
+    petReaction: null,
+    petPose: null,
+    lookTarget: null,
     barkUntil: 0,
     barkCooldown: 0,
     warning: null,
@@ -411,6 +505,7 @@ function newGame(options = {}) {
     bossDefeated: false,
     ended: false,
     result: null,
+    resultSuccess: false,
   };
 }
 
@@ -1052,6 +1147,8 @@ function endGame(reason, success = false) {
   stopAllSounds();
   game.ended = true;
   game.result = reason;
+  game.resultSuccess = success;
+  resultAnimationStartedAt = performance.now() / 1000;
   const runResult = buildRunResult(success);
   const applied = applyRun(profile, runResult);
   profile = saveProfile(applied.profile);
@@ -1104,6 +1201,8 @@ function setRoom(roomIndex, userInitiated = true) {
   game.facing = WINDOWS[game.selectedWindow].x >= game.charlieX ? 1 : -1;
   game.targetX = WINDOWS[game.selectedWindow].x;
   game.moving = settings.motion ? 1 : 0;
+  game.movementStartedAt = game.elapsed;
+  game.lookTarget = null;
   if (!settings.motion) game.charlieX = game.targetX;
 
   if (game.listening.active?.roomId === previous) {
@@ -1142,6 +1241,8 @@ function selectWindow(windowId, announceChange = true) {
   game.facing = target.x >= game.charlieX ? 1 : -1;
   game.targetX = target.x;
   game.moving = settings.motion ? 1 : 0;
+  game.movementStartedAt = game.elapsed;
+  game.lookTarget = null;
   if (!settings.motion) game.charlieX = game.targetX;
   if (announceChange) {
     playUi();
@@ -1261,6 +1362,7 @@ function patienceStrike(roomIndex) {
   game.violations += 1;
   syncListeningState();
   game.combo = 1;
+  setPetReaction("failed");
   ui.ownerBubbleTitle.textContent = game.patience <= 34 ? "Charlie. That is enough." : "Charlie… seriously?";
   ui.ownerBubbleText.textContent = `An audible bark cost ${result.patienceLost} Patience.`;
   ui.ownerQuietProgress.value = 0;
@@ -1288,6 +1390,7 @@ function repel(entity, options = {}) {
     game.bossActive = false;
     game.bossDefeated = true;
   }
+  if (options.petReaction !== false) setPetReaction("review");
   addEffect("burst", WINDOWS[entity.windowId].x, 150, { color: "#e6ad3c", text: `+${earned}`, life: 1 });
   playSuccess();
   showToast(options.perfectCrime ? `PERFECT CRIME! +${earned}` : `Guarded! +${earned}`, options.perfectCrime ? "bonus" : "good");
@@ -1308,6 +1411,7 @@ function bark() {
   if (audibility.classification === AUDIBILITY.COVERED) game.coveredBarks += 1;
   const listeningHere = game.listening.active?.roomId === room;
   let perfectCrimeCandidate = false;
+  let ownerHeard = false;
 
   if (listeningHere && audibility.classification === AUDIBILITY.COVERED) {
     const covered = handleCoveredBark(game.listening, { roomId: room, now: game.elapsed });
@@ -1319,6 +1423,7 @@ function bark() {
     ui.ownerQuietProgress.value = 0;
   } else if (listeningHere && game.elapsed >= game.listeningGraceUntil) {
     patienceStrike(room);
+    ownerHeard = true;
     if (game.ended) return;
   } else if (listeningHere) {
     game.listening.active.quietSince = game.elapsed;
@@ -1335,6 +1440,7 @@ function bark() {
     game.score = Math.max(0, game.score - 25);
     game.combo = 1;
     game.unnecessary += 1;
+    setPetReaction("failed");
     showToast("Empty window · −25", "warning");
     announce("No one was at that window. An unnecessary bark reset the streak.");
   } else if (entity.friendly) {
@@ -1343,6 +1449,7 @@ function bark() {
     game.combo = 1;
     game.unnecessary += 1;
     game.friendBarks += 1;
+    setPetReaction("failed");
     game.listening.sneaky = null;
     syncListeningState();
     addEffect("wave", WINDOWS[windowId].x, 142, { text: "SORRY!", color: "#277c76", life: 0.9 });
@@ -1413,8 +1520,9 @@ function bark() {
       }
     }
 
-    if (entity.hp <= 0) repel(entity, { perfectCrime: perfectCrimeCandidate });
+    if (entity.hp <= 0) repel(entity, { perfectCrime: perfectCrimeCandidate, petReaction: !ownerHeard });
     else {
+      if (!ownerHeard) setPetReaction("running");
       playHit(windowId);
       const remaining = `${entity.hp} bark${entity.hp === 1 ? "" : "s"} left`;
       if (behaviorFeedback) {
@@ -1438,6 +1546,8 @@ function useChicken() {
   const superDuration = 6 * (game.run.tagModifiers.superDurationMultiplier ?? 1);
   const patienceRestore = 25 * (game.run.tagModifiers.chickenPatienceRestoreMultiplier ?? 1);
   game.superUntil = game.elapsed + superDuration;
+  game.superStartedAt = game.elapsed;
+  setPetReaction("jumping");
   game.listening = {
     ...game.listening,
     patience: Math.min(MAX_PATIENCE, game.listening.patience + patienceRestore),
@@ -1539,6 +1649,7 @@ function missVisitor(entity) {
   if (index >= 0) game.entities.splice(index, 1);
   if (entity.friendly) {
     game.friendsSpared += 1;
+    setPetReaction("waving");
     if (entity.key === "postie") {
       game.parcelsDelivered += 1;
       resolveEntityBehavior(entity, "passed");
@@ -1560,6 +1671,7 @@ function missVisitor(entity) {
   }
   game.combo = 1;
   game.missed += 1;
+  setPetReaction("failed");
   game.safety = game.relaxed ? Math.max(1, game.safety - 0.5) : Math.max(0, game.safety - 1);
   addEffect("alert", WINDOWS[entity.windowId].x, 180, { text: "TOO CLOSE!", color: "#b84d37", life: 1.1 });
   playAlert(entity.windowId);
@@ -1689,6 +1801,7 @@ function updateGame(dt) {
       game.rooms[roomId].attention = Math.min(game.rooms[roomId].attention, 20);
       game.rooms[roomId].noise = game.rooms[roomId].attention / 100 * 3;
       game.score += 50;
+      setPetReaction("waving");
       syncListeningState();
       ui.ownerBubble.hidden = true;
       showToast(`Good girl · Patience +${Math.round(quiet.recovered)} · +50`, "good");
@@ -1709,6 +1822,9 @@ function updateGame(dt) {
     game.lastAudibility = null;
     delete canvasWrap.dataset.audibility;
   }
+
+  if (game.petReaction && game.elapsed >= game.petReaction.until) game.petReaction = null;
+  if (game.lookTarget && game.elapsed >= game.lookTarget.until) game.lookTarget = null;
 
   if (game.listening.sneaky && game.elapsed >= game.listening.sneaky.expiresAt) {
     game.listening.sneaky = null;
@@ -2463,14 +2579,21 @@ function drawCharlie() {
   if (!game) return;
   const barking = game.barkUntil > game.elapsed;
   const superMode = game.superUntil > game.elapsed;
-  const bob = settings.motion ? Math.sin(game.elapsed * 10) * (game.moving > 0 ? 6 : 1.5) : 0;
+  const pose = resolvePetPose();
+  game.petPose = pose;
+  canvasWrap.dataset.petAnimation = pose.state;
+  canvasWrap.dataset.petFrame = `${pose.row}:${pose.column}`;
+  canvasWrap.dataset.petSource = pose.source;
   const x = game.charlieX;
-  const y = 494 + bob;
+  const groundY = 586;
+  const spriteWidth = 184;
+  const spriteHeight = spriteWidth * (PET_CELL_HEIGHT / PET_CELL_WIDTH);
+  const y = groundY - spriteHeight / 2;
   ctx.save();
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = "#242927";
   ctx.beginPath();
-  ctx.ellipse(x, y + 66, 70, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, groundY - 6, 66, 15, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
@@ -2487,17 +2610,25 @@ function drawCharlie() {
     ctx.restore();
   }
 
-  const sourceX = 238;
-  const sourceY = 18;
-  const sourceWidth = 940;
-  const sourceHeight = 985;
-  const spriteWidth = barking ? 182 : 170;
-  const spriteHeight = spriteWidth * (sourceHeight / sourceWidth);
   if (dogReady) {
+    const barkProgress = settings.motion && barking
+      ? clamp((game.barkUntil - game.elapsed) / 0.2, 0, 1)
+      : 0;
+    const barkPunch = Math.sin(barkProgress * Math.PI);
     ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(game.facing, 1);
-    ctx.drawImage(dogImage, sourceX, sourceY, sourceWidth, sourceHeight, -spriteWidth / 2, -spriteHeight / 2, spriteWidth, spriteHeight);
+    ctx.translate(x, groundY);
+    ctx.scale(1 + barkPunch * 0.055, 1 - barkPunch * 0.035);
+    ctx.drawImage(
+      dogImage,
+      pose.column * PET_CELL_WIDTH,
+      pose.row * PET_CELL_HEIGHT,
+      PET_CELL_WIDTH,
+      PET_CELL_HEIGHT,
+      -spriteWidth / 2,
+      -spriteHeight,
+      spriteWidth,
+      spriteHeight,
+    );
     ctx.restore();
   } else {
     drawFallbackDog(x, y, game.facing, barking);
@@ -2509,7 +2640,7 @@ function drawCharlie() {
   ctx.lineWidth = 3;
   ctx.setLineDash([7, 7]);
   ctx.beginPath();
-  ctx.moveTo(x, y - 58);
+  ctx.moveTo(x, groundY - 132);
   ctx.lineTo(windowItem.x, 237);
   ctx.stroke();
   ctx.setLineDash([]);
@@ -2518,6 +2649,33 @@ function drawCharlie() {
   ctx.arc(windowItem.x, 238, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+function drawResultPet() {
+  const resultCtx = ui.resultPet?.getContext("2d");
+  if (!resultCtx) return;
+  resultCtx.clearRect(0, 0, PET_CELL_WIDTH, PET_CELL_HEIGHT);
+  if (!dogReady || screen !== "result" || !game) return;
+  const state = game.resultSuccess ? "waving" : "failed";
+  const frame = getPetAnimationFrame(
+    state,
+    performance.now() / 1000,
+    resultAnimationStartedAt,
+    { loop: true, reducedMotion: !settings.motion },
+  );
+  ui.resultPet.dataset.petAnimation = state;
+  ui.resultPet.dataset.petFrame = `${frame.row}:${frame.column}`;
+  resultCtx.drawImage(
+    dogImage,
+    frame.column * PET_CELL_WIDTH,
+    frame.row * PET_CELL_HEIGHT,
+    PET_CELL_WIDTH,
+    PET_CELL_HEIGHT,
+    0,
+    0,
+    PET_CELL_WIDTH,
+    PET_CELL_HEIGHT,
+  );
 }
 
 function drawEffects() {
@@ -2638,6 +2796,7 @@ function render() {
   }
   drawLegend();
   ctx.restore();
+  drawResultPet();
 }
 
 function canvasPoint(event) {
@@ -2663,6 +2822,16 @@ function onCanvasPointer(event) {
   }
   const room = ROOMS.findIndex((item) => point.x >= item.left && point.x <= item.right);
   if (room >= 0) setRoom(room);
+}
+
+function onCanvasPointerMove(event) {
+  if (screen !== "playing" || !game || !settings.motion) return;
+  const point = canvasPoint(event);
+  game.lookTarget = { x: point.x, y: point.y, until: game.elapsed + 0.65 };
+}
+
+function clearCanvasLookTarget() {
+  if (game) game.lookTarget = null;
 }
 
 function onKeyDown(event) {
@@ -2819,6 +2988,8 @@ function bindEvents() {
   ui.chickenButton.addEventListener("click", useChicken);
   ui.roomTabs.forEach((button) => button.addEventListener("click", () => setRoom(Number(button.dataset.room))));
   canvas.addEventListener("pointerdown", onCanvasPointer);
+  canvas.addEventListener("pointermove", onCanvasPointerMove);
+  canvas.addEventListener("pointerleave", clearCanvasLookTarget);
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && screen === "playing") pauseGame();
@@ -2869,6 +3040,7 @@ window.CharlieGuard = {
       sneaky: game.sneaky ? { ...game.sneaky } : null,
       barkCooldown: game.barkCooldown,
       superRemaining: Math.max(0, game.superUntil - game.elapsed),
+      petAnimation: game.petPose ? { ...game.petPose } : null,
       audio: getAudioState(),
       entities: game.entities.map((entity) => ({ ...entity })),
       stats: {

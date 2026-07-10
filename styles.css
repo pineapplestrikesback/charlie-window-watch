@@ -1668,6 +1668,16 @@ button.patrol-card:hover:not(:disabled),
   object-fit: cover;
 }
 
+.result-card__pet {
+  position: absolute;
+  right: clamp(0.35rem, 1vw, 0.8rem);
+  bottom: clamp(0.3rem, 1vw, 0.75rem);
+  width: clamp(5.6rem, 11vw, 8.2rem);
+  height: auto;
+  filter: drop-shadow(0 0.35rem 0.15rem rgba(36, 41, 39, 0.28));
+  pointer-events: none;
+}
+
 .result-ribbon {
   position: absolute;
   bottom: 1rem;
@@ -2790,6 +2800,11 @@ footer span {
 
   .hud__primary {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .status-chip--phase strong {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .hud__meters {
