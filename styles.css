@@ -1915,6 +1915,11 @@ button.patrol-card:hover:not(:disabled),
   color: var(--ink-soft);
 }
 
+.pause-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .owner-bubble {
   position: absolute;
   z-index: 5;
@@ -1928,6 +1933,13 @@ button.patrol-card:hover:not(:disabled),
   border-radius: 0.8rem 0.8rem 0.1rem 0.8rem;
   box-shadow: 5px 5px 0 var(--terracotta);
   animation: bubble-in 240ms ease-out both;
+}
+
+.owner-bubble,
+.game-caption,
+.toast,
+.acoustic-feedback {
+  pointer-events: none;
 }
 
 .owner-bubble span,
@@ -3987,5 +3999,196 @@ body.is-fullscreen-lock {
     min-height: 2.45rem;
     padding: 0.25rem;
     font-size: 0.58rem;
+  }
+}
+
+/* Immersive Patrol: the flat is the controller --------------------------- */
+
+.page-shell.is-fullscreen-mode .game-caption,
+.page-shell.is-fullscreen-mode .toast,
+.page-shell.is-fullscreen-mode .owner-bubble,
+.page-shell.is-fullscreen-mode .acoustic-feedback {
+  display: none !important;
+}
+
+body.is-immersive-play {
+  height: 100vh;
+  height: 100dvh;
+  padding: 0 !important;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+.page-shell.is-immersive-mode {
+  position: fixed;
+  z-index: 2400;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  padding: 0 !important;
+  overflow: hidden;
+  background: #cad8c6;
+}
+
+.page-shell.is-immersive-mode .site-header,
+.page-shell.is-immersive-mode .settings-cluster,
+.page-shell.is-immersive-mode .action-dock,
+.page-shell.is-immersive-mode .chicken-control {
+  display: contents !important;
+}
+
+.page-shell.is-immersive-mode .mini-brand,
+.page-shell.is-immersive-mode .setting-button,
+.page-shell.is-immersive-mode #fullscreenButton,
+.page-shell.is-immersive-mode .hud,
+.page-shell.is-immersive-mode .objective-strip,
+.page-shell.is-immersive-mode .room-tabs,
+.page-shell.is-immersive-mode .threat-roster,
+.page-shell.is-immersive-mode .action-dock__group,
+.page-shell.is-immersive-mode .chicken-control,
+.page-shell.is-immersive-mode .game-caption,
+.page-shell.is-immersive-mode .toast,
+.page-shell.is-immersive-mode .owner-bubble,
+.page-shell.is-immersive-mode .acoustic-feedback,
+.page-shell.is-immersive-mode main > :not(.game-panel),
+.page-shell.is-immersive-mode footer {
+  display: none !important;
+}
+
+.page-shell.is-immersive-mode main {
+  position: fixed;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.page-shell.is-immersive-mode .game-panel {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100dvw;
+  height: 100dvh;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #cad8c6;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.page-shell.is-immersive-mode .canvas-wrap {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  aspect-ratio: auto;
+  background: #cad8c6;
+  border: 0;
+  border-radius: 0;
+}
+
+.page-shell.is-immersive-mode .canvas-wrap > #gameCanvas,
+.page-shell.is-immersive-mode #gameCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  object-fit: cover;
+  object-position: var(--camera-x, 50%) 50%;
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+  transition: object-position 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.page-shell.is-immersive-mode .canvas-wrap.is-camera-dragging > #gameCanvas {
+  cursor: grabbing;
+  transition: none;
+}
+
+.page-shell.is-immersive-mode .bark-button {
+  position: fixed;
+  z-index: 2600;
+  right: max(0.45rem, env(safe-area-inset-right));
+  bottom: max(0.45rem, env(safe-area-inset-bottom));
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
+  opacity: 0.78;
+  border-width: 1.5px;
+  border-radius: 50%;
+  box-shadow: 0 2px 0 rgba(36, 41, 39, 0.72);
+}
+
+.page-shell.is-immersive-mode .bark-button__sound {
+  font-family: var(--sans);
+  font-size: 0.52rem;
+  letter-spacing: 0.04em;
+}
+
+.page-shell.is-immersive-mode .bark-button > span:not(.bark-button__sound) {
+  display: none;
+}
+
+.page-shell.is-immersive-mode #pauseButton {
+  position: fixed;
+  z-index: 2600;
+  top: max(0.4rem, env(safe-area-inset-top));
+  right: max(0.4rem, env(safe-area-inset-right));
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
+  color: var(--paper);
+  background: rgba(36, 41, 39, 0.58);
+  border: 1px solid rgba(255, 250, 240, 0.65);
+  border-radius: 50%;
+  box-shadow: none;
+  opacity: 0.74;
+}
+
+.page-shell.is-immersive-mode #pauseButton span {
+  font-size: 0;
+}
+
+.page-shell.is-immersive-mode #pauseButton span::after {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  content: "•••";
+}
+
+body[data-screen="paused"] .page-shell.is-immersive-mode .bark-button,
+body[data-screen="paused"] .page-shell.is-immersive-mode #pauseButton {
+  display: none;
+}
+
+.page-shell.is-immersive-mode .pause-screen {
+  position: fixed;
+  z-index: 2800;
+  inset: 0;
+}
+
+.page-shell.is-immersive-mode .pause-card {
+  width: min(24rem, calc(100% - 1.5rem));
+  padding: 1.25rem;
+}
+
+@media (orientation: landscape) and (max-height: 620px) {
+  .page-shell.is-immersive-mode .canvas-wrap > #gameCanvas,
+  .page-shell.is-immersive-mode #gameCanvas {
+    object-fit: contain;
+    object-position: 50% 50%;
   }
 }

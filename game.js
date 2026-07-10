@@ -113,6 +113,8 @@ const ui = {
   nextPatrolButton: $("nextPatrolButton"),
   bookFromResultButton: $("bookFromResultButton"),
   resumeButton: $("resumeButton"),
+  immersiveExitButton: $("immersiveExitButton"),
+  classicControlsButton: $("classicControlsButton"),
   relaxedToggle: $("relaxedToggle"),
   soundToggle: $("soundToggle"),
   motionToggle: $("motionToggle"),
@@ -280,6 +282,9 @@ const failedSoundUrls = new Set();
 const lastSoundChoice = new Map();
 let previousFocus = null;
 let resultAnimationStartedAt = 0;
+let immersiveClassicControls = false;
+const canvasGestures = new Map();
+let activeDragPointer = null;
 const fullscreenState = {
   fallback: false,
   scrollY: 0,
@@ -751,6 +756,38 @@ function isGameFullscreen() {
   return isNativeGameFullscreen() || isFocusMode();
 }
 
+function compactImmersiveViewport() {
+  return window.innerWidth <= 620 || (window.innerHeight <= 620 && window.innerWidth <= 1024);
+}
+
+function isImmersiveMode() {
+  return ui.pageShell.classList.contains("is-immersive-mode");
+}
+
+function isDeclutteredFullscreen() {
+  return isGameFullscreen();
+}
+
+function syncImmersiveMode() {
+  if (!isGameFullscreen()) immersiveClassicControls = false;
+  const immersive = isGameFullscreen()
+    && ["playing", "paused"].includes(screen)
+    && compactImmersiveViewport()
+    && !immersiveClassicControls;
+  ui.pageShell.classList.toggle("is-immersive-mode", immersive);
+  document.body.classList.toggle("is-immersive-play", immersive);
+  ui.pauseButton.setAttribute("aria-label", immersive ? "Pause and options" : "Pause game");
+  ui.immersiveExitButton.hidden = !isGameFullscreen();
+  ui.classicControlsButton.hidden = !immersive;
+  if (immersive) {
+    requestAnimationFrame(syncCanvasCamera);
+  } else {
+    resetCanvasGesture();
+    canvasWrap.style.removeProperty("--camera-x");
+    delete canvasWrap.dataset.cameraFactor;
+  }
+}
+
 function syncFullscreenUI() {
   const active = isGameFullscreen();
   ui.pageShell.classList.toggle("is-fullscreen-mode", active);
@@ -760,6 +797,7 @@ function syncFullscreenUI() {
   ui.fullscreenButton.setAttribute("aria-label", active ? "Exit full-screen play mode" : "Enter full-screen play mode");
   ui.fullscreenButton.title = active ? "Exit full screen" : "Full screen";
   ui.fullscreenButton.querySelector("span").textContent = active ? "×" : "⛶";
+  syncImmersiveMode();
   if (active && ["playing", "paused"].includes(screen)) {
     requestAnimationFrame(() => canvas.focus({ preventScroll: true }));
   }
@@ -869,8 +907,9 @@ function setLayer(name) {
   screen = name === null ? "playing" : name;
   document.body.dataset.screen = screen;
   const playSurface = screen === "playing" || screen === "paused";
-  ui.fullscreenButton.hidden = !playSurface;
+  ui.fullscreenButton.hidden = screen !== "playing";
   if (!playSurface && isGameFullscreen()) void exitGameFullscreen({ announceExit: false });
+  syncImmersiveMode();
   const blocked = screen !== "playing";
   const modalBlocked = ["briefing", "book", "patrolBriefing", "paused", "result"].includes(screen);
   ui.roomTabBar.inert = blocked;
@@ -2074,11 +2113,13 @@ function syncHUD() {
 function updateRoomUI() {
   if (!game) return;
   canvasWrap.dataset.room = ROOMS[game.selectedRoom].id;
+  canvasWrap.dataset.window = String(game.selectedWindow);
   ui.roomTabs.forEach((button) => {
     const selected = Number(button.dataset.room) === game.selectedRoom;
     button.classList.toggle("is-active", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
+  syncCanvasCamera();
 }
 
 function roundedRect(x, y, width, height, radius = 12) {
@@ -2642,17 +2683,35 @@ function drawVisitor(entity) {
   ctx.fill();
   drawApproachArt(entity);
 
-  ctx.font = '800 12px "Avenir Next", "Segoe UI", sans-serif';
-  const pillWidth = clamp(ctx.measureText(entity.label).width + 20, 94, 150);
-  ctx.fillStyle = "rgba(36,41,39,.92)";
-  roundedRect(-pillWidth / 2, 42, pillWidth, 25, 10);
-  ctx.fill();
-  label(entity.label, 0, 59, { size: 11, color: "#fffaf0", align: "center", maxWidth: pillWidth - 12 });
+  const decluttered = isDeclutteredFullscreen();
+  if (!decluttered) {
+    ctx.font = '800 12px "Avenir Next", "Segoe UI", sans-serif';
+    const pillWidth = clamp(ctx.measureText(entity.label).width + 20, 94, 150);
+    ctx.fillStyle = "rgba(36,41,39,.92)";
+    roundedRect(-pillWidth / 2, 42, pillWidth, 25, 10);
+    ctx.fill();
+    label(entity.label, 0, 59, { size: 11, color: "#fffaf0", align: "center", maxWidth: pillWidth - 12 });
+  } else {
+    ctx.fillStyle = "rgba(255,250,240,.88)";
+    ctx.strokeStyle = entity.friendly ? "#277c76" : "#b84d37";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (entity.friendly) {
+      ctx.arc(0, 49, 8, 0, Math.PI * 2);
+    } else {
+      ctx.moveTo(0, 39);
+      ctx.lineTo(10, 56);
+      ctx.lineTo(-10, 56);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.stroke();
+  }
   if (!entity.friendly) {
     for (let pip = 0; pip < entity.maxHp; pip += 1) {
       ctx.fillStyle = pip < entity.hp ? "#d66f4a" : "rgba(255,250,240,.35)";
       ctx.beginPath();
-      ctx.arc((pip - (entity.maxHp - 1) / 2) * 13, 75, 4.5, 0, Math.PI * 2);
+      ctx.arc((pip - (entity.maxHp - 1) / 2) * 13, decluttered ? 68 : 75, 4.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -2700,6 +2759,7 @@ function drawCharlie() {
   if (!game) return;
   const barking = game.barkUntil > game.elapsed;
   const superMode = game.superUntil > game.elapsed;
+  const chickenReady = isImmersiveMode() && game.chicken >= game.chickenGoal;
   const pose = resolvePetPose();
   game.petPose = pose;
   canvasWrap.dataset.petAnimation = pose.state;
@@ -2718,15 +2778,40 @@ function drawCharlie() {
   ctx.fill();
   ctx.restore();
 
-  if (superMode) {
+  if (superMode || chickenReady) {
     ctx.save();
-    const glow = 85 + (settings.motion ? Math.sin(game.elapsed * 8) * 8 : 0);
+    const glow = (superMode ? 85 : 68) + (settings.motion ? Math.sin(game.elapsed * 8) * 8 : 0);
     const radial = ctx.createRadialGradient(x, y, 10, x, y, glow);
-    radial.addColorStop(0, "rgba(230,173,60,.48)");
+    radial.addColorStop(0, `rgba(230,173,60,${superMode ? 0.48 : 0.34})`);
     radial.addColorStop(1, "rgba(230,173,60,0)");
     ctx.fillStyle = radial;
     ctx.beginPath();
     ctx.arc(x, y, glow, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (chickenReady) {
+    ctx.save();
+    ctx.translate(x + 70, groundY - 115);
+    ctx.rotate(-0.35);
+    ctx.fillStyle = "#e6ad3c";
+    ctx.strokeStyle = "#703d38";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 19, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "#fffaf0";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(15, 5);
+    ctx.lineTo(30, 13);
+    ctx.stroke();
+    ctx.fillStyle = "#fffaf0";
+    ctx.beginPath();
+    ctx.arc(32, 9, 5, 0, Math.PI * 2);
+    ctx.arc(29, 16, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -2801,10 +2886,30 @@ function drawResultPet() {
 
 function drawEffects() {
   if (!game) return;
+  const decluttered = isDeclutteredFullscreen();
   for (const effect of game.effects) {
     const t = 1 - effect.life / effect.maxLife;
     ctx.save();
     ctx.globalAlpha = clamp(effect.life / Math.min(0.32, effect.maxLife), 0, 1);
+    if (decluttered) {
+      ctx.strokeStyle = effect.kind === "woof" ? "#d66f4a" : effect.color;
+      ctx.lineWidth = Math.max(2, 5 - t * 2);
+      const radius = 22 + t * (effect.kind === "woof" ? 62 : 34);
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, radius, effect.kind === "woof" ? -1.15 : 0, effect.kind === "woof" ? 0.15 : Math.PI * 2);
+      ctx.stroke();
+      if (["burst", "chicken", "alert"].includes(effect.kind)) {
+        for (let ray = 0; ray < 6; ray += 1) {
+          const angle = Math.PI * 2 * ray / 6;
+          ctx.beginPath();
+          ctx.moveTo(effect.x + Math.cos(angle) * (radius + 6), effect.y + Math.sin(angle) * (radius * 0.55));
+          ctx.lineTo(effect.x + Math.cos(angle) * (radius + 18), effect.y + Math.sin(angle) * (radius * 0.7));
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      continue;
+    }
     if (effect.kind === "woof") {
       ctx.strokeStyle = "#d66f4a";
       ctx.lineWidth = 5 - t * 2;
@@ -2836,6 +2941,7 @@ function drawEffects() {
 }
 
 function drawLegend() {
+  if (isDeclutteredFullscreen()) return;
   ctx.save();
   ctx.translate(0, 615);
   ctx.fillStyle = "rgba(255,250,240,.94)";
@@ -2861,6 +2967,22 @@ function drawListeningState() {
   if (!active) return;
   const room = ROOMS[active.roomId];
   const quietProgress = clamp((game.elapsed - active.quietSince) / DEFAULT_ACOUSTICS.quietSeconds, 0, 1);
+  if (isDeclutteredFullscreen()) {
+    ctx.save();
+    const pulse = settings.motion ? 0.45 + Math.sin(game.elapsed * 7) * 0.16 : 0.48;
+    ctx.strokeStyle = `rgba(167,68,47,${pulse})`;
+    ctx.lineWidth = 5;
+    roundedRect(room.left + 5, 108, room.right - room.left - 10, 488, 12);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(36,41,39,.2)";
+    roundedRect(room.left + 24, 246, room.right - room.left - 48, 6, 3);
+    ctx.fill();
+    ctx.fillStyle = "#f4c75e";
+    roundedRect(room.left + 24, 246, (room.right - room.left - 48) * quietProgress, 6, 3);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.fillStyle = "rgba(112,61,56,.94)";
   roundedRect(room.centre - 82, 288, 164, 48, 14);
@@ -2878,6 +3000,7 @@ function drawListeningState() {
 function drawBossState() {
   const boss = game?.entities.find((entity) => entity.boss);
   if (!boss) return;
+  if (isDeclutteredFullscreen()) return;
   const width = 380;
   const x = WIDTH / 2 - width / 2;
   ctx.save();
@@ -2907,7 +3030,7 @@ function render() {
     drawEffects();
     drawListeningState();
     drawBossState();
-    if (game.superUntil > game.elapsed) {
+    if (game.superUntil > game.elapsed && !isDeclutteredFullscreen()) {
       const remaining = Math.max(0, game.superUntil - game.elapsed).toFixed(1);
       ctx.fillStyle = "rgba(36,41,39,.9)";
       roundedRect(1030, 644, 224, 48, 14);
@@ -2920,6 +3043,41 @@ function render() {
   drawResultPet();
 }
 
+function cameraFactorForWindow(windowId = game?.selectedWindow ?? 2) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return 0.5;
+  const scale = Math.max(rect.width / WIDTH, rect.height / HEIGHT);
+  const horizontalOverflow = WIDTH * scale - rect.width;
+  if (horizontalOverflow <= 1) return 0.5;
+  return clamp((WINDOWS[windowId].x * scale - rect.width / 2) / horizontalOverflow, 0, 1);
+}
+
+function setCanvasCameraFactor(factor) {
+  const next = clamp(Number(factor) || 0, 0, 1);
+  canvasWrap.dataset.cameraFactor = next.toFixed(5);
+  canvasWrap.style.setProperty("--camera-x", `${(next * 100).toFixed(3)}%`);
+}
+
+function renderedCanvasCameraFactor() {
+  const [horizontalPosition = ""] = getComputedStyle(canvas).objectPosition.split(/\s+/);
+  const renderedPercent = Number.parseFloat(horizontalPosition);
+  if (horizontalPosition.endsWith("%") && Number.isFinite(renderedPercent)) {
+    return clamp(renderedPercent / 100, 0, 1);
+  }
+  const requestedFactor = Number.parseFloat(canvasWrap.dataset.cameraFactor);
+  return Number.isFinite(requestedFactor) ? clamp(requestedFactor, 0, 1) : 0.5;
+}
+
+function syncCanvasCamera() {
+  if (!isImmersiveMode() || !game) {
+    canvasWrap.style.removeProperty("--camera-x");
+    delete canvasWrap.dataset.cameraFactor;
+    return;
+  }
+  if (activeDragPointer !== null) return;
+  setCanvasCameraFactor(cameraFactorForWindow(game.selectedWindow));
+}
+
 function canvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
   const objectFit = getComputedStyle(canvas).objectFit;
@@ -2928,7 +3086,10 @@ function canvasPoint(event) {
     : Math.min(rect.width / WIDTH, rect.height / HEIGHT);
   const visibleWidth = WIDTH * scale;
   const visibleHeight = HEIGHT * scale;
-  const roomPosition = objectFit === "cover" ? [0, 0.5, 1][game?.selectedRoom ?? 1] : 0.5;
+  const immersiveCamera = renderedCanvasCameraFactor();
+  const roomPosition = objectFit === "cover"
+    ? isImmersiveMode() ? immersiveCamera : [0, 0.5, 1][game?.selectedRoom ?? 1]
+    : 0.5;
   const offsetX = (rect.width - visibleWidth) * roomPosition;
   const offsetY = (rect.height - visibleHeight) / 2;
   return {
@@ -2937,22 +3098,143 @@ function canvasPoint(event) {
   };
 }
 
-function onCanvasPointer(event) {
+function nearestWindowAtPoint(point) {
+  if (point.y > 285) return null;
+  const nearest = WINDOWS.reduce(
+    (best, item) => Math.abs(item.x - point.x) < Math.abs(best.x - point.x) ? item : best,
+    WINDOWS[0],
+  );
+  return Math.abs(nearest.x - point.x) <= nearest.width * 0.78 ? nearest : null;
+}
+
+function handleCanvasSelection(event) {
   if (screen !== "playing" || !game) return;
   const point = canvasPoint(event);
-  if (point.y < 265) {
-    const nearest = WINDOWS.reduce((best, item) => Math.abs(item.x - point.x) < Math.abs(best.x - point.x) ? item : best, WINDOWS[0]);
-    if (Math.abs(nearest.x - point.x) <= nearest.width * 0.75) selectWindow(nearest.id);
+  const targetWindow = nearestWindowAtPoint(point);
+  if (targetWindow) {
+    selectWindow(targetWindow.id);
     return;
   }
   const room = ROOMS.findIndex((item) => point.x >= item.left && point.x <= item.right);
   if (room >= 0) setRoom(room);
 }
 
-function onCanvasPointerMove(event) {
-  if (screen !== "playing" || !game || !settings.motion) return;
+function handleImmersiveTap(event) {
+  if (screen !== "playing" || !game) return;
   const point = canvasPoint(event);
-  game.lookTarget = { x: point.x, y: point.y, until: game.elapsed + 0.65 };
+  const chickenReady = game.chicken >= game.chickenGoal;
+  const tappedCharlie = point.y >= 370 && point.y <= 650 && Math.abs(point.x - game.charlieX) <= 105;
+  if (chickenReady && tappedCharlie) {
+    useChicken();
+    return;
+  }
+  const targetWindow = nearestWindowAtPoint(point);
+  if (!targetWindow) return;
+  selectWindow(targetWindow.id, false);
+  bark();
+}
+
+function changeFlatWindow(delta) {
+  if (!game || screen !== "playing") return;
+  const next = clamp(game.selectedWindow + delta, 0, WINDOWS.length - 1);
+  if (next === game.selectedWindow) {
+    syncCanvasCamera();
+    return;
+  }
+  selectWindow(next);
+}
+
+function resetCanvasGesture(pointerId = null) {
+  if (pointerId === null) {
+    canvasGestures.clear();
+    activeDragPointer = null;
+  } else {
+    canvasGestures.delete(pointerId);
+    if (activeDragPointer === pointerId) activeDragPointer = null;
+  }
+  if (activeDragPointer === null) canvasWrap.classList.remove("is-camera-dragging");
+  syncCanvasCamera();
+}
+
+function cancelCanvasGesture(event) {
+  if (!isImmersiveMode()) return;
+  resetCanvasGesture(event.pointerId);
+}
+
+function onCanvasPointerDown(event) {
+  if (!isImmersiveMode()) {
+    handleCanvasSelection(event);
+    return;
+  }
+  if (screen !== "playing" || !game) return;
+  const cameraFactor = Number.parseFloat(canvasWrap.dataset.cameraFactor);
+  canvasGestures.set(event.pointerId, {
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    maxMovement: 0,
+    dragged: false,
+    cameraFactor: Number.isFinite(cameraFactor) ? cameraFactor : cameraFactorForWindow(),
+  });
+  try { canvas.setPointerCapture(event.pointerId); } catch { /* capture can be unavailable in synthetic input */ }
+}
+
+function onCanvasPointerMove(event) {
+  if (!isImmersiveMode()) {
+    if (screen !== "playing" || !game || !settings.motion || event.pointerType === "touch") return;
+    const point = canvasPoint(event);
+    game.lookTarget = { x: point.x, y: point.y, until: game.elapsed + 0.65 };
+    return;
+  }
+  const gesture = canvasGestures.get(event.pointerId);
+  if (!gesture || screen !== "playing" || !game) return;
+  gesture.lastX = event.clientX;
+  gesture.lastY = event.clientY;
+  const dx = event.clientX - gesture.startX;
+  const dy = event.clientY - gesture.startY;
+  gesture.maxMovement = Math.max(gesture.maxMovement, Math.hypot(dx, dy));
+  if (gesture.maxMovement > 14) gesture.dragged = true;
+  if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
+    if (activeDragPointer === null) activeDragPointer = event.pointerId;
+    if (activeDragPointer === event.pointerId) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = Math.max(rect.width / WIDTH, rect.height / HEIGHT);
+      const overflow = Math.max(1, WIDTH * scale - rect.width);
+      setCanvasCameraFactor(gesture.cameraFactor - dx / overflow);
+      canvasWrap.classList.add("is-camera-dragging");
+      event.preventDefault();
+    }
+  }
+}
+
+function onCanvasPointerUp(event) {
+  if (!isImmersiveMode()) return;
+  const gesture = canvasGestures.get(event.pointerId);
+  if (!gesture || screen !== "playing" || !game) {
+    resetCanvasGesture(event.pointerId);
+    return;
+  }
+  const dx = event.clientX - gesture.startX;
+  const dy = event.clientY - gesture.startY;
+  const movement = Math.hypot(dx, dy);
+  gesture.maxMovement = Math.max(gesture.maxMovement, movement);
+  const swipeThreshold = Math.min(72, Math.max(42, canvas.getBoundingClientRect().width * 0.1));
+  const horizontalSwipe = Math.abs(dx) >= swipeThreshold && Math.abs(dx) > Math.abs(dy) * 1.2;
+  const otherThumbIsPanning = activeDragPointer !== null && activeDragPointer !== event.pointerId;
+  if (horizontalSwipe) {
+    changeFlatWindow(dx < 0 ? 1 : -1);
+  } else if (!gesture.dragged && gesture.maxMovement <= 14) {
+    handleImmersiveTap(event);
+    if (otherThumbIsPanning) {
+      try { canvas.releasePointerCapture(activeDragPointer); } catch { /* capture may already be released */ }
+      try { canvas.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
+      resetCanvasGesture();
+      return;
+    }
+  }
+  try { canvas.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
+  resetCanvasGesture(event.pointerId);
 }
 
 function clearCanvasLookTarget() {
@@ -3110,6 +3392,13 @@ function bindEvents() {
   ui.pauseButton.addEventListener("click", pauseGame);
   ui.fullscreenButton.addEventListener("click", () => { void toggleFullscreen(); });
   ui.resumeButton.addEventListener("click", resumeGame);
+  ui.immersiveExitButton.addEventListener("click", () => { void exitGameFullscreen(); });
+  ui.classicControlsButton.addEventListener("click", () => {
+    immersiveClassicControls = true;
+    syncImmersiveMode();
+    resumeGame();
+    announce("Classic full-screen controls restored.");
+  });
   ui.soundToggle.addEventListener("click", toggleSound);
   ui.motionToggle.addEventListener("click", toggleMotion);
   ui.relaxedToggle.addEventListener("click", toggleRelaxed);
@@ -3120,8 +3409,11 @@ function bindEvents() {
   ui.barkButton.addEventListener("click", bark);
   ui.chickenButton.addEventListener("click", useChicken);
   ui.roomTabs.forEach((button) => button.addEventListener("click", () => setRoom(Number(button.dataset.room))));
-  canvas.addEventListener("pointerdown", onCanvasPointer);
-  canvas.addEventListener("pointermove", onCanvasPointerMove);
+  canvas.addEventListener("pointerdown", onCanvasPointerDown);
+  canvas.addEventListener("pointermove", onCanvasPointerMove, { passive: false });
+  canvas.addEventListener("pointerup", onCanvasPointerUp);
+  canvas.addEventListener("pointercancel", cancelCanvasGesture);
+  canvas.addEventListener("lostpointercapture", cancelCanvasGesture);
   canvas.addEventListener("pointerleave", clearCanvasLookTarget);
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -3131,6 +3423,10 @@ function bindEvents() {
   });
   window.addEventListener("blur", () => {
     if (screen === "playing" && !fullscreenState.transitioning) pauseGame();
+  });
+  window.addEventListener("resize", () => {
+    syncImmersiveMode();
+    requestAnimationFrame(syncCanvasCamera);
   });
 }
 

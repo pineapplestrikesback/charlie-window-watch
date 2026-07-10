@@ -8,8 +8,8 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Charlie: Window Watch</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=mobile-guard-v2">
-    <script src="game.js?v=mobile-guard-v2" type="module"></script>
+    <link rel="stylesheet" href="styles.css?v=immersive-patrol-v1">
+    <script src="game.js?v=immersive-patrol-v1" type="module"></script>
   </head>
 
   <body>
@@ -120,7 +120,7 @@
           </nav>
 
           <div class="canvas-wrap">
-            <p id="gameInstructions" class="visually-hidden">Use A and D to change rooms, Left and Right Arrow to choose a window, Space to bark, and C to give Charlie chicken. The large controls below provide the same actions on touch screens.</p>
+            <p id="gameInstructions" class="visually-hidden">Use A and D to change rooms, Left and Right Arrow to choose a window, Space to bark, and C to give Charlie chicken. In immersive full screen, swipe across the flat to move between windows, tap a window to select it and bark, or tap Charlie when her chicken is ready.</p>
             <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="A D ArrowLeft ArrowRight Space C">
               Your browser needs canvas support to play Charlie: Window Watch.
             </canvas>
@@ -377,7 +377,11 @@
                 <p class="eyebrow">Treat break</p>
                 <h2 id="pause-heading">Patrol paused</h2>
                 <p id="pause-description">The suspicious elements have agreed to wait.</p>
-                <button id="resumeButton" class="button button--primary button--large" type="button">Resume patrol</button>
+                <div class="pause-actions">
+                  <button id="resumeButton" class="button button--primary button--large" type="button">Resume patrol</button>
+                  <button id="classicControlsButton" class="button button--paper" type="button" hidden>Show classic controls</button>
+                  <button id="immersiveExitButton" class="button button--paper" type="button" aria-controls="pageShell" hidden>Exit full screen</button>
+                </div>
               </div>
             </section>
           </div>
@@ -409,7 +413,7 @@
                 </button>
               </div>
             </div>
-            <button id="barkButton" class="bark-button" type="button" aria-keyshortcuts="Space" aria-controls="gameCanvas">
+            <button id="barkButton" class="bark-button" type="button" aria-label="Bark" aria-keyshortcuts="Space" aria-controls="gameCanvas">
               <span class="bark-button__sound" aria-hidden="true">WOOF!</span>
               <span>Bark <kbd>Space</kbd></span>
             </button>
