@@ -92,6 +92,7 @@ const ctx = canvas.getContext("2d");
 const canvasWrap = canvas.closest(".canvas-wrap");
 
 const ui = {
+  pageShell: $("pageShell"),
   start: $("startScreen"),
   briefing: $("briefingScreen"),
   patrolBook: $("patrolBookScreen"),
@@ -115,6 +116,7 @@ const ui = {
   relaxedToggle: $("relaxedToggle"),
   soundToggle: $("soundToggle"),
   motionToggle: $("motionToggle"),
+  fullscreenButton: $("fullscreenButton"),
   pauseButton: $("pauseButton"),
   time: $("timeValue"),
   phase: $("phaseValue"),
@@ -278,6 +280,14 @@ const failedSoundUrls = new Set();
 const lastSoundChoice = new Map();
 let previousFocus = null;
 let resultAnimationStartedAt = 0;
+const fullscreenState = {
+  fallback: false,
+  scrollY: 0,
+  nativeActive: false,
+  transitioning: false,
+  silentExit: false,
+  ignoreEscapeUntil: 0,
+};
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const choose = (items) => items[Math.floor(Math.random() * items.length)];
@@ -725,6 +735,105 @@ function showToast(message, kind = "good") {
   toastTimer = window.setTimeout(() => { ui.toast.hidden = true; }, 1450);
 }
 
+function nativeFullscreenElement() {
+  return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+}
+
+function isNativeGameFullscreen() {
+  return nativeFullscreenElement() === ui.pageShell;
+}
+
+function isFocusMode() {
+  return fullscreenState.fallback;
+}
+
+function isGameFullscreen() {
+  return isNativeGameFullscreen() || isFocusMode();
+}
+
+function syncFullscreenUI() {
+  const active = isGameFullscreen();
+  ui.pageShell.classList.toggle("is-fullscreen-mode", active);
+  ui.pageShell.classList.toggle("is-focus-mode", fullscreenState.fallback);
+  document.body.classList.toggle("is-fullscreen-lock", fullscreenState.fallback);
+  ui.fullscreenButton.setAttribute("aria-pressed", String(active));
+  ui.fullscreenButton.setAttribute("aria-label", active ? "Exit full-screen play mode" : "Enter full-screen play mode");
+  ui.fullscreenButton.title = active ? "Exit full screen" : "Full screen";
+  ui.fullscreenButton.querySelector("span").textContent = active ? "×" : "⛶";
+  if (active && ["playing", "paused"].includes(screen)) {
+    requestAnimationFrame(() => canvas.focus({ preventScroll: true }));
+  }
+}
+
+function enterFocusMode() {
+  if (isGameFullscreen()) return;
+  fullscreenState.fallback = true;
+  fullscreenState.scrollY = window.scrollY;
+  syncFullscreenUI();
+  announce("Full-screen focus mode on. Your browser toolbar may remain visible on this device.");
+}
+
+async function exitGameFullscreen({ announceExit = true } = {}) {
+  if (isFocusMode()) {
+    fullscreenState.fallback = false;
+    syncFullscreenUI();
+    window.scrollTo(0, fullscreenState.scrollY);
+    if (announceExit) announce("Full-screen play mode off.");
+    return;
+  }
+  if (!isNativeGameFullscreen()) return;
+  fullscreenState.silentExit = !announceExit;
+  fullscreenState.transitioning = true;
+  try {
+    if (typeof document.exitFullscreen === "function") {
+      await document.exitFullscreen();
+    } else if (typeof document.webkitExitFullscreen === "function") {
+      await document.webkitExitFullscreen();
+    }
+  } catch {
+    fullscreenState.silentExit = false;
+  } finally {
+    fullscreenState.transitioning = false;
+  }
+}
+
+async function toggleFullscreen() {
+  if (isGameFullscreen()) {
+    await exitGameFullscreen();
+    return;
+  }
+  fullscreenState.transitioning = true;
+  try {
+    if (typeof ui.pageShell.requestFullscreen === "function") {
+      await ui.pageShell.requestFullscreen();
+    } else if (typeof ui.pageShell.webkitRequestFullscreen === "function") {
+      await ui.pageShell.webkitRequestFullscreen();
+    } else {
+      enterFocusMode();
+    }
+  } catch {
+    enterFocusMode();
+  } finally {
+    fullscreenState.transitioning = false;
+  }
+}
+
+function handleFullscreenChange() {
+  const wasNative = fullscreenState.nativeActive;
+  fullscreenState.nativeActive = isNativeGameFullscreen();
+  if (wasNative && !fullscreenState.nativeActive) {
+    fullscreenState.ignoreEscapeUntil = performance.now() + 300;
+  }
+  syncFullscreenUI();
+  if (!wasNative && fullscreenState.nativeActive) {
+    announce("Full-screen play mode on.");
+  } else if (wasNative && !fullscreenState.nativeActive) {
+    const silent = fullscreenState.silentExit;
+    fullscreenState.silentExit = false;
+    if (!silent) announce("Full-screen play mode off.");
+  }
+}
+
 function setSwitch(button, value, label, key) {
   button.setAttribute("aria-checked", String(value));
   button.setAttribute("aria-label", `${label}: ${value ? "on" : "off"}`);
@@ -759,6 +868,9 @@ function setLayer(name) {
   }
   screen = name === null ? "playing" : name;
   document.body.dataset.screen = screen;
+  const playSurface = screen === "playing" || screen === "paused";
+  ui.fullscreenButton.hidden = !playSurface;
+  if (!playSurface && isGameFullscreen()) void exitGameFullscreen({ announceExit: false });
   const blocked = screen !== "playing";
   const modalBlocked = ["briefing", "book", "patrolBriefing", "paused", "result"].includes(screen);
   ui.roomTabBar.inert = blocked;
@@ -1004,6 +1116,8 @@ function startRound(options = pendingRun) {
   setLayer(null);
   syncHUD();
   updateRoomUI();
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => window.scrollTo(0, 0));
   const label = game.run.mode === "campaign" ? game.run.patrol.title : MODE_CONFIGS[game.run.mode]?.label ?? "Patrol";
   announce(`${game.relaxed ? "Relaxed " : ""}${label} started. Charlie is in the living room, watching the centre window.`);
   canvas.focus({ preventScroll: true });
@@ -1953,6 +2067,7 @@ function syncHUD() {
 
 function updateRoomUI() {
   if (!game) return;
+  canvasWrap.dataset.room = ROOMS[game.selectedRoom].id;
   ui.roomTabs.forEach((button) => {
     const selected = Number(button.dataset.room) === game.selectedRoom;
     button.classList.toggle("is-active", selected);
@@ -2801,10 +2916,14 @@ function render() {
 
 function canvasPoint(event) {
   const rect = canvas.getBoundingClientRect();
-  const scale = Math.min(rect.width / WIDTH, rect.height / HEIGHT);
+  const objectFit = getComputedStyle(canvas).objectFit;
+  const scale = objectFit === "cover"
+    ? Math.max(rect.width / WIDTH, rect.height / HEIGHT)
+    : Math.min(rect.width / WIDTH, rect.height / HEIGHT);
   const visibleWidth = WIDTH * scale;
   const visibleHeight = HEIGHT * scale;
-  const offsetX = (rect.width - visibleWidth) / 2;
+  const roomPosition = objectFit === "cover" ? [0, 0.5, 1][game?.selectedRoom ?? 1] : 0.5;
+  const offsetX = (rect.width - visibleWidth) * roomPosition;
   const offsetY = (rect.height - visibleHeight) / 2;
   return {
     x: (event.clientX - rect.left - offsetX) / scale,
@@ -2836,6 +2955,13 @@ function clearCanvasLookTarget() {
 
 function onKeyDown(event) {
   const code = event.code;
+  if (code === "Escape" && isFocusMode()) {
+    event.preventDefault();
+    void exitGameFullscreen();
+    return;
+  }
+  if (code === "Escape" && isNativeGameFullscreen()) return;
+  if (code === "Escape" && performance.now() < fullscreenState.ignoreEscapeUntil) return;
   const modalLayers = {
     briefing: ui.briefing,
     book: ui.patrolBook,
@@ -2976,6 +3102,7 @@ function bindEvents() {
     announce(`${input.value ? getCollarTag(input.value).name : "Official issue"} equipped.`);
   });
   ui.pauseButton.addEventListener("click", pauseGame);
+  ui.fullscreenButton.addEventListener("click", () => { void toggleFullscreen(); });
   ui.resumeButton.addEventListener("click", resumeGame);
   ui.soundToggle.addEventListener("click", toggleSound);
   ui.motionToggle.addEventListener("click", toggleMotion);
@@ -2991,11 +3118,13 @@ function bindEvents() {
   canvas.addEventListener("pointermove", onCanvasPointerMove);
   canvas.addEventListener("pointerleave", clearCanvasLookTarget);
   document.addEventListener("keydown", onKeyDown);
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && screen === "playing") pauseGame();
   });
   window.addEventListener("blur", () => {
-    if (screen === "playing") pauseGame();
+    if (screen === "playing" && !fullscreenState.transitioning) pauseGame();
   });
 }
 
