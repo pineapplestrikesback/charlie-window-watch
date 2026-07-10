@@ -3487,10 +3487,14 @@ body.is-fullscreen-lock {
 
   body[data-screen="playing"] .site-header,
   body[data-screen="paused"] .site-header {
+    position: sticky;
+    z-index: 150;
+    top: 0;
     min-height: 3.35rem;
     align-items: center;
     flex-direction: row;
     padding: 0.3rem max(0.45rem, env(safe-area-inset-right)) 0.3rem max(0.45rem, env(safe-area-inset-left));
+    background: rgba(243, 234, 215, 0.97);
   }
 
   body[data-screen="playing"] .mini-brand,

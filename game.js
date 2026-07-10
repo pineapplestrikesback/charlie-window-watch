@@ -1118,6 +1118,12 @@ function startRound(options = pendingRun) {
   updateRoomUI();
   window.scrollTo(0, 0);
   requestAnimationFrame(() => window.scrollTo(0, 0));
+  window.setTimeout(() => {
+    if (screen === "playing") window.scrollTo(0, 0);
+  }, 120);
+  window.setTimeout(() => {
+    if (screen === "playing") window.scrollTo(0, 0);
+  }, 420);
   const label = game.run.mode === "campaign" ? game.run.patrol.title : MODE_CONFIGS[game.run.mode]?.label ?? "Patrol";
   announce(`${game.relaxed ? "Relaxed " : ""}${label} started. Charlie is in the living room, watching the centre window.`);
   canvas.focus({ preventScroll: true });
