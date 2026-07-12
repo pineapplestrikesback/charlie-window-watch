@@ -135,6 +135,18 @@ test("room environments map to LOUD, HEARD, and MUFFLED Attention", () => {
   assert.deepEqual([heard.classification, heard.attentionDelta], [AUDIBILITY.HEARD, 36]);
   assert.deepEqual([muffled.classification, muffled.attentionDelta], [AUDIBILITY.MUFFLED, 18]);
   assert.deepEqual([unknown.classification, unknown.attentionDelta], [AUDIBILITY.HEARD, 36]);
+
+  const explicit = calculateBarkAudibility({
+    environment: { classification: AUDIBILITY.LOUD },
+    intensity: 0.5,
+  });
+  const manufacturedCover = calculateBarkAudibility({
+    environment: { classification: AUDIBILITY.COVERED },
+  });
+  const invalidObject = calculateBarkAudibility({ environment: { classification: "SILENT" } });
+  assert.deepEqual([explicit.classification, explicit.attentionDelta], [AUDIBILITY.LOUD, 29]);
+  assert.deepEqual([manufacturedCover.classification, manufacturedCover.attentionDelta], [AUDIBILITY.HEARD, 36]);
+  assert.deepEqual([invalidObject.classification, invalidObject.attentionDelta], [AUDIBILITY.HEARD, 36]);
 });
 
 test("a cover charge covers exactly one bark regardless of its environment", () => {
@@ -317,6 +329,19 @@ test("a COVERED bark during Listening is a Perfect Crime but restarts quiet time
   assert.equal(covered.state.active.quietSince, 3.5);
   assert.equal(tooSoon.outcome, "still-listening");
   assert.equal(complete.outcome, "quiet-compliance");
+
+  const outside = handleCoveredBark(listening, { roomId: "kitchen", now: 4 });
+  assert.equal(outside.outcome, "covered-outside-listening");
+  assert.equal(outside.perfectCrime, false);
+  assert.equal(outside.state.perfectCrimes, 0);
+  assert.equal(outside.state.active.quietSince, 2);
+});
+
+test("Listening public operations reject missing rooms and safely no-op while inactive", () => {
+  const inactive = createListeningState({ patience: 60 });
+  assert.throws(() => startListening(inactive), /roomId is required/);
+  assert.equal(relocateDuringListening(inactive, { toRoomId: "kitchen" }).outcome, "not-listening");
+  assert.equal(advanceQuietCompliance(inactive, { now: 99 }).outcome, "not-listening");
 });
 
 test("audible Listening violations cost Patience, reset quiet time, and bottom at zero", () => {
@@ -380,6 +405,13 @@ test("a pigeon summons one paired pigeon without recursive pairing", () => {
   }, "spawned");
   assert.equal(child.outcome, "pigeon-already-paired");
   assert.deepEqual(child.spawns, []);
+
+  const blocked = resolveVisitorBehavior(pigeon, "spawned", {
+    occupiedWindowIds: [0, 1, 2, 3, 4, 5],
+  });
+  assert.equal(blocked.outcome, "pigeon-pair-blocked");
+  assert.deepEqual(blocked.spawns, []);
+  assert.equal(blocked.visitor.behavior.pairCreated, true);
 });
 
 test("robot reboot can be armed, interrupted by a quick bark, or complete", () => {
@@ -399,6 +431,19 @@ test("robot reboot can be armed, interrupted by a quick bark, or complete", () =
   assert.equal(rebooted.outcome, "robot-rebooted");
   assert.equal(rebooted.visitor.hp, 2);
   assert.equal(rebooted.visitor.behavior.rebootAt, undefined);
+
+  const defeated = resolveVisitorBehavior({ ...robot, hp: 0 }, { type: "barked", now: 30 });
+  assert.equal(defeated.outcome, "robot-defeated");
+  assert.equal(defeated.visitor.hp, 0);
+  assert.equal(defeated.visitor.behavior.rebootAt, undefined);
+
+  const overdue = resolveVisitorBehavior({
+    ...robot,
+    behavior: { rebootAt: 5 },
+  }, { type: "barked", now: 5 });
+  assert.equal(overdue.outcome, "robot-rebooted-and-rearmed");
+  assert.equal(overdue.visitor.hp, 2);
+  assert.equal(overdue.visitor.behavior.rebootAt, 6.35);
 });
 
 test("postie departure schedules exactly one parcel pirate chain", () => {

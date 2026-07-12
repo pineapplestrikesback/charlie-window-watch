@@ -74,6 +74,17 @@ test("initial position overrides are copied, clamped, and never mutated", () => 
   assert.deepEqual(positions, before);
   assert.equal(flock.sheep[0].x, 0.05);
   assert.equal(flock.sheep[5].x, 0.95);
+
+  const keyedPositions = { "ewe-zofka": 0.33, "lamb-kaja": 2 };
+  const keyedBefore = structuredClone(keyedPositions);
+  const keyed = createFlock({
+    seed: 7,
+    initialPositions: keyedPositions,
+    config: { maxX: 0.94 },
+  });
+  assert.equal(byId(keyed, "ewe-zofka").x, 0.33);
+  assert.equal(byId(keyed, "lamb-kaja").x, 0.94);
+  assert.deepEqual(keyedPositions, keyedBefore);
 });
 
 test("ordinary sheep respond to Charlie's side only on the sheep lane", () => {

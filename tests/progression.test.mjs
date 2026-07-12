@@ -18,17 +18,27 @@ import {
   PROFILE_VERSION,
   countPawStamps,
   createDefaultProfile,
+  isKnownPatrolId,
   loadProfile,
+  migrateProfile,
   normalizeProfile,
+  resetProfile,
+  saveProfile,
   updateProfile,
 } from "../profile.js";
 import {
   applyRun,
+  applyRunAndSave,
+  applyRunToProfile,
   equipCollarTag,
   evaluatePatrolObjectives,
+  evaluateRule,
   evaluateTravelObjectives,
+  getActiveCollarTag,
   getProgressionSnapshot,
+  getUnlockedModeIds,
   isModeUnlocked,
+  isPatrolUnlocked,
   normalizeRunResult,
 } from "../progression.js";
 
@@ -436,4 +446,142 @@ test("collar tags cannot be equipped early and updateProfile remains immutable",
   assert.equal(updated.lifetime.failures, 0);
   assert.equal(updated.updatedAt, "2026-07-09T11:00:00.000Z");
   assert.notEqual(updated, equipped);
+});
+
+test("the public rule evaluator covers every supported operator and rejects malformed rules", () => {
+  const run = { completed: true, stats: { guarded: 7, accuracy: 0.8 } };
+
+  assert.equal(evaluateRule({ type: "completed" }, run), true);
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.guarded", operator: ">", target: 6 }, run), true);
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.guarded", operator: "<=", target: 7 }, run), true);
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.accuracy", operator: "<", target: 0.9 }, run), true);
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.guarded", operator: "===", target: "7" }, run), true);
+  assert.equal(evaluateRule({
+    type: "all",
+    rules: [
+      { type: "completed" },
+      { type: "metric", metric: "stats.guarded", operator: ">=", target: 7 },
+    ],
+  }, run), true);
+  assert.equal(evaluateRule({
+    type: "any",
+    rules: [
+      { type: "metric", metric: "stats.guarded", operator: ">", target: 99 },
+      { type: "metric", metric: "stats.accuracy", operator: ">=", target: 0.8 },
+    ],
+  }, run), true);
+
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.missing", operator: ">=", target: 1 }, run), false);
+  assert.equal(evaluateRule({ type: "metric", metric: "stats.guarded", operator: "!=", target: 7 }, run), false);
+  assert.equal(evaluateRule({ type: "all", rules: [] }, run), false);
+  assert.equal(evaluateRule({ type: "any", rules: "not-an-array" }, run), false);
+  assert.equal(evaluateRule({ type: "unknown" }, run), false);
+});
+
+test("public progression helpers expose unlocks, active loadout, and immutable run application", () => {
+  const initial = createDefaultProfile({ now: NOW });
+  assert.equal(isKnownPatrolId("regular-shift"), true);
+  assert.equal(isKnownPatrolId("unknown"), false);
+  assert.equal(isPatrolUnlocked(initial, "regular-shift"), true);
+  assert.equal(isPatrolUnlocked(initial, "special-delivery"), false);
+  assert.deepEqual(getUnlockedModeIds(initial), ["campaign", "travel", "classic"]);
+  assert.equal(isModeUnlocked(initial, "unknown"), false);
+
+  const advanced = applyRunToProfile(initial, qualifyingRun("regular-shift"), { now: NOW });
+  assert.equal(initial.lifetime.runs, 0);
+  assert.equal(advanced.lifetime.runs, 1);
+  assert.equal(isPatrolUnlocked(advanced, "special-delivery"), true);
+  assert.deepEqual(getUnlockedModeIds(advanced), ["campaign", "travel", "classic", "daily"]);
+
+  assert.equal(getActiveCollarTag(advanced), null);
+  const equipped = equipCollarTag(advanced, "velvet-voice", { now: NOW });
+  assert.equal(getActiveCollarTag(equipped)?.id, "velvet-voice");
+  assert.equal(equipCollarTag(equipped, null, { now: NOW }).selectedCollarTagId, null);
+  assert.throws(() => equipCollarTag(equipped, "unknown", { now: NOW }), /Unknown collar tag/);
+});
+
+test("profile persistence helpers round-trip runs and reset legacy scores deliberately", () => {
+  const storage = memoryStorage({ [LEGACY_BEST_SCORE_KEY]: "321" });
+  const applied = applyRunAndSave(storage, {
+    mode: "classic",
+    completed: true,
+    score: 900,
+    durationSeconds: 45,
+    stats: { guarded: 4, barks: 5 },
+  }, { now: NOW });
+
+  assert.equal(applied.profile.bestScore, 900);
+  assert.equal(applied.profile.lifetime.runs, 1);
+  assert.deepEqual(loadProfile(storage, { now: NOW, persist: false }), applied.profile);
+  assert.equal(JSON.parse(storage.getItem(PROFILE_STORAGE_KEY)).history.length, 1);
+
+  const savedAt = "2026-07-09T12:00:00.000Z";
+  const saved = saveProfile(applied.profile, storage, { now: savedAt });
+  assert.equal(saved.updatedAt, savedAt);
+  assert.deepEqual(migrateProfile(saved, { now: savedAt }), saved);
+
+  const preserved = resetProfile(storage, { now: savedAt });
+  assert.equal(preserved.bestScore, 321);
+  assert.equal(preserved.lifetime.runs, 0);
+  const discarded = resetProfile(storage, { now: savedAt, preserveLegacyBest: false });
+  assert.equal(discarded.bestScore, 0);
+  assert.deepEqual(JSON.parse(storage.getItem(PROFILE_STORAGE_KEY)), discarded);
+});
+
+test("campaign patrol records retain attempt totals and the strongest clear metrics", () => {
+  let profile = createDefaultProfile({ now: NOW });
+  const runs = [
+    { completed: false, score: 300, durationSeconds: 0, stats: { accuracy: 0.4, guarded: 2, bestCombo: 1 } },
+    { completed: true, score: 900, durationSeconds: 90, stats: { accuracy: 0.8, guarded: 5, bestCombo: 3 } },
+    { completed: true, score: 700, durationSeconds: 120, stats: { accuracy: 0.9, guarded: 7, bestCombo: 6 } },
+    { completed: true, score: 800, durationSeconds: 75, stats: { accuracy: 0.7, guarded: 6, bestCombo: 4 } },
+  ];
+
+  for (let index = 0; index < runs.length; index += 1) {
+    profile = applyRun(profile, {
+      mode: "campaign",
+      patrolId: "regular-shift",
+      ...runs[index],
+    }, { now: new Date(Date.parse(NOW) + index * 60_000) }).profile;
+    if (index === 0) {
+      assert.equal(profile.campaign.bestByPatrol["regular-shift"].fastestClearSeconds, null);
+    }
+  }
+
+  assert.deepEqual(profile.campaign.bestByPatrol["regular-shift"], {
+    attempts: 4,
+    clears: 3,
+    bestScore: 900,
+    bestAccuracy: 0.9,
+    bestGuarded: 7,
+    bestCombo: 6,
+    fastestClearSeconds: 75,
+    lastPlayedAt: "2026-07-09T10:18:00.000Z",
+  });
+});
+
+test("daily completion records deduplicate dates, infer missing keys, and keep the best score", () => {
+  let profile = createDefaultProfile({ now: NOW });
+  profile = applyRun(profile, {
+    mode: "daily",
+    completed: true,
+    score: 500,
+    endedAt: "2026-07-10T08:00:00.000Z",
+  }, { now: NOW }).profile;
+  profile = applyRun(profile, {
+    mode: "daily",
+    dailyDateKey: "2026-07-10",
+    completed: true,
+    score: 400,
+  }, { now: NOW }).profile;
+  profile = applyRun(profile, {
+    mode: "daily",
+    dailyDateKey: "2026-07-10",
+    completed: false,
+    score: 800,
+  }, { now: NOW }).profile;
+
+  assert.deepEqual(profile.daily.completedDateKeys, ["2026-07-10"]);
+  assert.equal(profile.daily.bestByDate["2026-07-10"], 800);
+  assert.equal(profile.history[0].dailyDateKey, "2026-07-10");
 });

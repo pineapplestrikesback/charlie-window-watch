@@ -88,6 +88,12 @@ test("core game files exist and are non-empty", async () => {
   await Promise.all(coreFiles.map(assertNonemptyFile));
 });
 
+test("the repository root preserves the GitHub Pages no-index contract", async () => {
+  assert.equal((await stat(fromRoot(".nojekyll"))).size, 0);
+  assert.equal(await readFile(fromRoot("robots.txt"), "utf8"), "User-agent: *\nDisallow: /\n");
+  assert.match(html, /<meta\s+name=["']robots["']\s+content=["']noindex, nofollow, noarchive["']\s*\/?>/i);
+});
+
 test("every bundled sound cue exists, is non-empty, and has source credits", async () => {
   const audioPaths = [...game.matchAll(/\bsrc:\s*(["'])(assets\/audio\/[^"']+\.mp3)\1/g)]
     .map((match) => match[2]);

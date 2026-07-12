@@ -97,6 +97,14 @@ test("unknown animation states fail clearly", () => {
 });
 
 test("look frames follow the exact sixteen-direction v2 mapping", () => {
+  for (let index = 0; index < 16; index += 1) {
+    const radians = index * 22.5 * Math.PI / 180;
+    const frame = getPetLookFrame(Math.sin(radians), -Math.cos(radians));
+    assert.equal(frame.directionIndex, index, `direction ${index}`);
+    assert.equal(frame.row, index < 8 ? 9 : 10, `row for direction ${index}`);
+    assert.equal(frame.column, index % 8, `column for direction ${index}`);
+  }
+
   assert.deepEqual(getPetLookFrame(0, -10), {
     state: "look", row: 9, column: 0, directionIndex: 0, degrees: 0,
   });
