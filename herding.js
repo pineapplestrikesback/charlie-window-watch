@@ -19,7 +19,9 @@ export const SHEEP_BLUEPRINTS = deepFreeze([
 
 export const HERDING_CONFIG = deepFreeze({
   minX: 0.035,
-  maxX: 0.965,
+  // Keep the flock inside Charlie's rightmost cabin patrol position (0.9514),
+  // so she can always get beyond an overshooting sheep and guide it left.
+  maxX: 0.94,
   sheepLane: SHEEP_LANE,
   settledZone: { min: 0.72, max: 0.93 },
   settledRequired: 4,
