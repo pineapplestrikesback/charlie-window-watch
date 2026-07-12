@@ -8,8 +8,8 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Charlie: Window Watch</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=immersive-patrol-v1">
-    <script src="game.js?v=immersive-patrol-v1" type="module"></script>
+    <link rel="stylesheet" href="styles.css?v=minimal-patrol-v3">
+    <script src="game.js?v=minimal-patrol-v3" type="module"></script>
   </head>
 
   <body>
@@ -41,12 +41,6 @@
             <span class="setting-button__label">Motion</span>
             <span class="switch-state">On</span>
           </button>
-          <button id="fullscreenButton" class="icon-button fullscreen-button" type="button" aria-controls="pageShell" aria-pressed="false" aria-label="Enter full-screen play mode" hidden>
-            <span aria-hidden="true">⛶</span>
-          </button>
-          <button id="pauseButton" class="icon-button" type="button" aria-label="Pause game" aria-controls="pauseCurtain">
-            <span aria-hidden="true">Ⅱ</span>
-          </button>
         </div>
       </header>
 
@@ -54,78 +48,50 @@
         <section class="game-panel" aria-labelledby="play-heading">
           <h1 id="play-heading" class="visually-hidden">Charlie: Window Watch browser game</h1>
 
-          <div class="hud" aria-label="Current game status">
-            <div class="hud__primary">
-              <div class="status-chip status-chip--time">
-                <span class="status-chip__label">Watch</span>
-                <strong id="timeValue">01:30</strong>
-              </div>
-              <div class="status-chip status-chip--phase">
-                <span class="status-chip__label">Phase</span>
-                <strong id="phaseValue">Quiet morning</strong>
-              </div>
-              <div class="status-chip">
-                <span class="status-chip__label">Score</span>
-                <strong id="scoreValue">0</strong>
-              </div>
-              <div class="status-chip status-chip--quiet">
-                <span id="bestLabel" class="status-chip__label">Classic best</span>
-                <strong id="highScoreValue">0</strong>
-              </div>
+          <div class="hud playbar play-chrome" aria-label="Current game status">
+            <div class="status-chip status-chip--time">
+              <span class="status-chip__label">Watch</span>
+              <strong id="timeValue">01:30</strong>
             </div>
-
-            <div class="hud__meters">
-              <div class="compact-meter" role="meter" aria-labelledby="safetyLabel safetyValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
-                <div class="compact-meter__top">
-                  <span id="safetyLabel"><span class="meter-symbol meter-symbol--shield" aria-hidden="true">◆</span> Safety</span>
-                  <strong id="safetyValue">100%</strong>
-                </div>
-                <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--safe" style="width: 100%"></span></div>
+            <div class="status-chip status-chip--score">
+              <span class="status-chip__label">Score</span>
+              <strong id="scoreValue">0</strong>
+            </div>
+            <div class="compact-meter" role="meter" aria-labelledby="safetyLabel safetyValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+              <div class="compact-meter__top">
+                <span id="safetyLabel"><span class="meter-symbol meter-symbol--shield" aria-hidden="true">◆</span> Safety</span>
+                <strong id="safetyValue">100%</strong>
               </div>
-              <div class="compact-meter" role="meter" aria-labelledby="patienceLabel patienceValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
-                <div class="compact-meter__top">
-                  <span id="patienceLabel"><span class="meter-symbol" aria-hidden="true">●</span> Patience</span>
-                  <strong id="patienceValue">100%</strong>
-                </div>
-                <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--patience" style="width: 100%"></span></div>
+              <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--safe" style="width: 100%"></span></div>
+            </div>
+            <div class="compact-meter" role="meter" aria-labelledby="patienceLabel patienceValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+              <div class="compact-meter__top">
+                <span id="patienceLabel"><span class="meter-symbol" aria-hidden="true">●</span> Patience</span>
+                <strong id="patienceValue">100%</strong>
               </div>
-              <div class="combo-badge" aria-label="Guarding combo">
-                <span>Streak</span>
-                <strong id="comboValue">×1</strong>
-              </div>
+              <div class="meter-track" aria-hidden="true"><span class="meter-fill meter-fill--patience" style="width: 100%"></span></div>
+            </div>
+            <div class="combo-badge" aria-label="Guarding combo">
+              <span>Streak</span>
+              <strong id="comboValue">×1</strong>
+            </div>
+            <div class="playbar__actions" aria-label="Patrol display controls">
+              <button id="fullscreenButton" class="icon-button fullscreen-button" type="button" aria-controls="pageShell" aria-pressed="false" aria-label="Enter full-screen play mode" hidden>
+                <span aria-hidden="true">⛶</span>
+              </button>
+              <button id="pauseButton" class="icon-button" type="button" aria-label="Pause game" aria-controls="pauseCurtain">
+                <span aria-hidden="true">Ⅱ</span>
+              </button>
             </div>
           </div>
-
-          <div class="objective-strip" aria-live="polite">
-            <span class="objective-strip__case" id="currentPatrolLabel">Classic patrol</span>
-            <p><span aria-hidden="true">◎</span> <strong>Current order:</strong> <span id="activeObjective">Keep the flat safe until the watch ends.</span></p>
-          </div>
-
-          <nav class="room-tabs" aria-label="Choose a room">
-            <button class="room-tab" type="button" data-room="0" aria-pressed="false">
-              <span class="room-tab__number">01</span>
-              <span>Office</span>
-              <span class="room-tab__details"><small>1 window</small><span id="condition-office" class="room-condition">Clear</span></span>
-            </button>
-            <button class="room-tab is-active" type="button" data-room="1" aria-pressed="true">
-              <span class="room-tab__number">02</span>
-              <span>Living room</span>
-              <span class="room-tab__details"><small>3 windows</small><span id="condition-living" class="room-condition">Clear</span></span>
-            </button>
-            <button class="room-tab" type="button" data-room="2" aria-pressed="false">
-              <span class="room-tab__number">03</span>
-              <span>Kitchen</span>
-              <span class="room-tab__details"><small>2 windows</small><span id="condition-kitchen" class="room-condition">Clear</span></span>
-            </button>
-          </nav>
 
           <div class="canvas-wrap">
-            <p id="gameInstructions" class="visually-hidden">Use A and D to change rooms, Left and Right Arrow to choose a window, Space to bark, and C to give Charlie chicken. In immersive full screen, swipe across the flat to move between windows, tap a window to select it and bark, or tap Charlie when her chicken is ready.</p>
-            <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="A D ArrowLeft ArrowRight Space C">
+            <p id="gameInstructions" class="visually-hidden">Use Left and Right Arrow to patrol all six windows across the flat, Space to bark, and C to give Charlie chicken. In immersive full screen, swipe across the flat, tap a window to select it and bark, or tap Charlie when her chicken is ready.</p>
+            <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="ArrowLeft ArrowRight Space C">
               Your browser needs canvas support to play Charlie: Window Watch.
             </canvas>
 
-            <div id="ownerBubble" class="owner-bubble" role="status" aria-live="polite" hidden>
+            <div id="ownerBubble" class="owner-bubble visually-hidden" role="status" aria-live="polite" hidden>
               <span class="owner-bubble__eyebrow">Owner attention</span>
               <strong id="ownerBubbleTitle">Charlie… shush!</strong>
               <span id="ownerBubbleText">Time for a tactical room change.</span>
@@ -136,8 +102,8 @@
               <small id="ownerChoiceHint" class="owner-choice-hint">Relocate, wait quietly, or find sound cover.</small>
             </div>
 
-            <div id="caption" class="game-caption">Living-room patrol ready. Three windows, zero nonsense.</div>
-            <div id="toast" class="toast" hidden>Good guard!</div>
+            <div id="caption" class="game-caption visually-hidden">Living-room patrol ready. Three windows, zero nonsense.</div>
+            <div id="toast" class="toast visually-hidden" hidden>Good guard!</div>
 
             <section id="startScreen" class="screen-layer title-screen" aria-labelledby="title-heading">
               <div class="title-screen__photo">
@@ -190,8 +156,8 @@
                   <article class="brief-step">
                     <span class="brief-step__number">2</span>
                     <div>
-                      <h3>Face the right window</h3>
-                      <p>Move between rooms and windows, then bark while the visitor is in view. Accurate guarding builds a combo; random woofs test the owner's patience.</p>
+                      <h3>Patrol window by window</h3>
+                      <p>Move left or right through all six windows, then bark while the visitor is in view. Accurate guarding builds a combo; random woofs test the owner's patience.</p>
                     </div>
                   </article>
                   <article class="brief-step">
@@ -213,11 +179,11 @@
                 <div class="control-legend" aria-label="Controls">
                   <div>
                     <span class="control-legend__label">Keyboard</span>
-                    <p><kbd>A</kbd><kbd>D</kbd> rooms &nbsp; <kbd>←</kbd><kbd>→</kbd> windows &nbsp; <kbd>Space</kbd> bark &nbsp; <kbd>C</kbd> chicken</p>
+                    <p><kbd>←</kbd><kbd>→</kbd> patrol all windows &nbsp; <kbd>Space</kbd> bark &nbsp; <kbd>C</kbd> chicken</p>
                   </div>
                   <div>
                     <span class="control-legend__label">Touch</span>
-                    <p>Use the large room, window, bark and chicken buttons beneath the game.</p>
+                    <p>Use the left, bark, right and chicken controls. In full screen, swipe and tap directly on the flat.</p>
                   </div>
                 </div>
 
@@ -377,6 +343,30 @@
                 <p class="eyebrow">Treat break</p>
                 <h2 id="pause-heading">Patrol paused</h2>
                 <p id="pause-description">The suspicious elements have agreed to wait.</p>
+                <section class="pause-patrol" aria-label="Current patrol details">
+                  <div class="objective-strip" aria-live="polite">
+                    <span class="objective-strip__case" id="currentPatrolLabel">Classic patrol</span>
+                    <p><strong>Orders:</strong> <span id="activeObjective">Keep the flat safe until the watch ends.</span></p>
+                  </div>
+                  <div class="pause-patrol__meta">
+                    <div class="status-chip status-chip--phase">
+                      <span class="status-chip__label">Current phase</span>
+                      <strong id="phaseValue">Quiet morning</strong>
+                    </div>
+                    <div class="status-chip status-chip--quiet">
+                      <span id="bestLabel" class="status-chip__label">Classic best</span>
+                      <strong id="highScoreValue">0</strong>
+                    </div>
+                  </div>
+                </section>
+                <div class="pause-settings" aria-label="Patrol settings">
+                  <button id="pauseSoundToggle" class="setting-button" type="button" role="switch" aria-checked="true" aria-label="Sound: on">
+                    <span aria-hidden="true">♪</span><span>Sound</span><span class="switch-state">On</span>
+                  </button>
+                  <button id="pauseMotionToggle" class="setting-button" type="button" role="switch" aria-checked="true" aria-label="Motion effects: on">
+                    <span aria-hidden="true">✦</span><span>Motion</span><span class="switch-state">On</span>
+                  </button>
+                </div>
                 <div class="pause-actions">
                   <button id="resumeButton" class="button button--primary button--large" type="button">Resume patrol</button>
                   <button id="classicControlsButton" class="button button--paper" type="button" hidden>Show classic controls</button>
@@ -386,36 +376,20 @@
             </section>
           </div>
 
-          <div id="gameStateSummary" class="threat-roster" aria-label="Current visitor and target status">
+          <div id="gameStateSummary" class="threat-roster visually-hidden" aria-label="Current visitor and target status">
             <strong>Watching:</strong> Living room centre window <span aria-hidden="true">•</span> No visitors outside.
           </div>
 
-          <div class="action-dock" aria-label="Game controls" aria-describedby="gameInstructions">
-            <div class="action-dock__group action-dock__group--rooms">
-              <span class="dock-label">Change room</span>
-              <div class="button-pair">
-                <button id="prevRoomButton" class="game-control" type="button" aria-label="Previous room" aria-keyshortcuts="A" aria-controls="gameCanvas">
-                  <span aria-hidden="true">A</span><small>Room</small>
-                </button>
-                <button id="nextRoomButton" class="game-control" type="button" aria-label="Next room" aria-keyshortcuts="D" aria-controls="gameCanvas">
-                  <span aria-hidden="true">D</span><small>Room</small>
-                </button>
-              </div>
-            </div>
-            <div class="action-dock__group action-dock__group--windows">
-              <span class="dock-label">Choose window</span>
-              <div class="button-pair">
-                <button id="prevWindowButton" class="game-control" type="button" aria-label="Previous window" aria-keyshortcuts="ArrowLeft" aria-controls="gameCanvas">
-                  <span aria-hidden="true">←</span><small>Window</small>
-                </button>
-                <button id="nextWindowButton" class="game-control" type="button" aria-label="Next window" aria-keyshortcuts="ArrowRight" aria-controls="gameCanvas">
-                  <span aria-hidden="true">→</span><small>Window</small>
-                </button>
-              </div>
-            </div>
+          <div class="action-dock play-chrome" aria-label="Game controls" aria-describedby="gameInstructions">
+            <button id="prevWindowButton" class="game-control" type="button" aria-label="Previous window across the flat" aria-keyshortcuts="ArrowLeft" aria-controls="gameCanvas">
+              <span aria-hidden="true">←</span>
+            </button>
             <button id="barkButton" class="bark-button" type="button" aria-label="Bark" aria-keyshortcuts="Space" aria-controls="gameCanvas">
               <span class="bark-button__sound" aria-hidden="true">WOOF!</span>
               <span>Bark <kbd>Space</kbd></span>
+            </button>
+            <button id="nextWindowButton" class="game-control" type="button" aria-label="Next window across the flat" aria-keyshortcuts="ArrowRight" aria-controls="gameCanvas">
+              <span aria-hidden="true">→</span>
             </button>
             <div class="chicken-control">
               <div class="chicken-control__meter" role="progressbar" aria-labelledby="chickenLabel chickenValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -429,55 +403,7 @@
           </div>
         </section>
 
-        <section class="flat-status" aria-labelledby="flat-heading">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Live from the flat</p>
-              <h2 id="flat-heading">Owner Attention monitor</h2>
-            </div>
-            <p>Every audible bark raises Attention in its room. Empty rooms cool much faster than the room Charlie occupies.</p>
-          </div>
-
-          <div class="noise-grid">
-            <article id="noise-office" class="noise-card" data-level="quiet">
-              <div class="noise-card__top"><span class="noise-card__index">01</span><span class="noise-status">Quiet</span></div>
-              <h3>Office</h3>
-              <p>Desk, computer, one strategic window.</p>
-              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-            </article>
-            <article id="noise-living" class="noise-card is-current" data-level="quiet">
-              <div class="noise-card__top"><span class="noise-card__index">02</span><span class="noise-status">Quiet</span></div>
-              <h3>Living room</h3>
-              <p>TV wall, sofa lookout, three grand windows.</p>
-              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-            </article>
-            <article id="noise-kitchen" class="noise-card" data-level="quiet">
-              <div class="noise-card__top"><span class="noise-card__index">03</span><span class="noise-status">Quiet</span></div>
-              <h3>Kitchen</h3>
-              <p>Two windows. Strong chance of chicken.</p>
-              <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-            </article>
-          </div>
-        </section>
-
-        <section class="field-notes" aria-labelledby="field-notes-heading">
-          <div>
-            <p class="eyebrow">Charlie's field notes</p>
-            <h2 id="field-notes-heading">A good guard knows when to bark—and when to change rooms.</h2>
-          </div>
-          <ol>
-            <li><span>01</span> Warning triangle means suspicious: bark.</li>
-            <li><span>02</span> Round marker means friendly: observe politely.</li>
-            <li><span>03</span> During Listening, go quiet to restore Patience or relocate for a Sneaky Switch.</li>
-            <li><span>04</span> TV scenes and kettle whistles can cover a bark completely: the Perfect Crime.</li>
-          </ol>
-        </section>
       </main>
-
-      <footer>
-        <p>Handcrafted for Charlie <span aria-hidden="true">♥</span> Chief Window Officer, age five-ish.</p>
-        <p>No actual neighbours were barked at in the making of this game.</p>
-      </footer>
     </div>
 
     <div id="announcement" class="visually-hidden" aria-live="assertive" aria-atomic="true"></div>

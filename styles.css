@@ -4030,21 +4030,19 @@ body.is-immersive-play {
   background: #cad8c6;
 }
 
-.page-shell.is-immersive-mode .site-header,
-.page-shell.is-immersive-mode .settings-cluster,
+.page-shell.is-immersive-mode .playbar,
+.page-shell.is-immersive-mode .playbar__actions,
 .page-shell.is-immersive-mode .action-dock,
 .page-shell.is-immersive-mode .chicken-control {
   display: contents !important;
 }
 
-.page-shell.is-immersive-mode .mini-brand,
-.page-shell.is-immersive-mode .setting-button,
+.page-shell.is-immersive-mode .site-header,
+.page-shell.is-immersive-mode .playbar > :not(.playbar__actions),
 .page-shell.is-immersive-mode #fullscreenButton,
-.page-shell.is-immersive-mode .hud,
-.page-shell.is-immersive-mode .objective-strip,
-.page-shell.is-immersive-mode .room-tabs,
 .page-shell.is-immersive-mode .threat-roster,
-.page-shell.is-immersive-mode .action-dock__group,
+.page-shell.is-immersive-mode #prevWindowButton,
+.page-shell.is-immersive-mode #nextWindowButton,
 .page-shell.is-immersive-mode .chicken-control,
 .page-shell.is-immersive-mode .game-caption,
 .page-shell.is-immersive-mode .toast,
@@ -4190,5 +4188,533 @@ body[data-screen="paused"] .page-shell.is-immersive-mode #pauseButton {
   .page-shell.is-immersive-mode #gameCanvas {
     object-fit: contain;
     object-position: 50% 50%;
+  }
+}
+
+/* Minimal Patrol v3: one playbar, one canvas, one action rail ------------ */
+
+body:not([data-screen="playing"]):not([data-screen="paused"]) .play-chrome {
+  display: none !important;
+}
+
+body[data-screen="playing"],
+body[data-screen="paused"] {
+  min-height: 100dvh;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+body[data-screen="playing"] .site-header,
+body[data-screen="paused"] .site-header,
+body[data-screen="playing"] main > :not(.game-panel),
+body[data-screen="paused"] main > :not(.game-panel),
+body[data-screen="playing"] footer,
+body[data-screen="paused"] footer {
+  display: none;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode),
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) {
+  position: relative;
+  inset: auto;
+  width: min(calc(100% - 0.8rem), calc(177.78dvh - 13.52rem));
+  height: auto;
+  margin: 0.35rem auto;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode) main,
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) main {
+  height: auto;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .game-panel,
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .game-panel {
+  display: grid;
+  height: calc(100dvh - 0.7rem);
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 3.25rem minmax(0, 1fr) 3.35rem;
+  grid-template-areas:
+    "hud"
+    "canvas"
+    "dock";
+  gap: 0.35rem;
+  padding: 0.35rem;
+  overflow: hidden;
+  background: rgba(255, 250, 240, 0.92);
+  border: 1.5px solid var(--ink);
+  border-radius: 1rem;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.playbar {
+  grid-area: hud;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(4.5rem, 0.7fr) minmax(4.5rem, 0.7fr) minmax(7rem, 1fr) minmax(7rem, 1fr) 3.8rem auto;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 0;
+}
+
+.playbar .status-chip,
+.playbar .compact-meter,
+.playbar .combo-badge {
+  min-width: 0;
+  min-height: 0;
+  padding: 0.3rem 0.45rem;
+  overflow: hidden;
+  border-width: 1px;
+  border-radius: 0.55rem;
+}
+
+.playbar .status-chip strong {
+  margin-top: 0;
+  overflow: hidden;
+  font-size: 0.92rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playbar .compact-meter__top {
+  gap: 0.3rem;
+  font-size: 0.66rem;
+}
+
+.playbar .meter-track {
+  height: 0.34rem;
+  margin-top: 0.22rem;
+}
+
+.playbar .combo-badge {
+  display: grid;
+  place-content: center;
+}
+
+.playbar__actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.playbar__actions .icon-button {
+  width: 3.05rem;
+  min-width: 3.05rem;
+  min-height: 100%;
+  background: var(--paper-strong);
+  border-radius: 0.6rem;
+  box-shadow: none;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .canvas-wrap,
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap {
+  position: relative;
+  grid-area: canvas;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  aspect-ratio: auto;
+  border: 1.5px solid var(--ink);
+  border-radius: 0.75rem;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode) #gameCanvas,
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) #gameCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+  object-position: 50% 50%;
+  transform: none;
+}
+
+.action-dock {
+  grid-area: dock;
+  display: grid;
+  min-width: 0;
+  grid-template-areas: "prev bark next chicken";
+  grid-template-columns: 3.05rem minmax(6.5rem, 9rem) 3.05rem minmax(10rem, 13rem);
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+#prevWindowButton { grid-area: prev; }
+#barkButton { grid-area: bark; }
+#nextWindowButton { grid-area: next; }
+.chicken-control { grid-area: chicken; }
+
+.action-dock .game-control,
+.action-dock .bark-button,
+.action-dock .chicken-button {
+  min-height: 0;
+  border-radius: 0.62rem;
+  box-shadow: none;
+}
+
+.action-dock .game-control {
+  padding: 0;
+  font-size: 1.35rem;
+}
+
+body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .bark-button,
+body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .bark-button {
+  position: static;
+  width: auto;
+  min-height: 0;
+  padding: 0.2rem 0.55rem;
+}
+
+.action-dock .bark-button__sound {
+  font-size: 0.95rem;
+}
+
+.action-dock .bark-button > span:last-child {
+  font-size: 0.58rem;
+}
+
+.action-dock .chicken-control {
+  min-width: 0;
+  grid-template-columns: minmax(5.2rem, 1fr) auto;
+  gap: 0.35rem;
+  padding: 0.3rem 0.38rem;
+  border-radius: 0.62rem;
+}
+
+.action-dock .chicken-control__label {
+  gap: 0.25rem;
+  font-size: 0.6rem;
+}
+
+.action-dock .chicken-track {
+  height: 0.32rem;
+  margin-top: 0.18rem;
+}
+
+.action-dock .chicken-button {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.6rem;
+}
+
+body[data-screen="paused"] #pauseCurtain {
+  position: fixed;
+  z-index: 2900;
+  inset: 0;
+  overflow: auto;
+}
+
+.pause-card {
+  width: min(34rem, 100%);
+  max-height: calc(100dvh - 1.5rem);
+  padding: 1.15rem;
+  overflow: auto;
+}
+
+.pause-card__icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.9rem;
+}
+
+.pause-card h2 {
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+}
+
+.pause-card > #pause-description {
+  margin: 0.35rem 0 0.7rem;
+}
+
+.pause-patrol {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+  text-align: left;
+}
+
+body[data-screen="paused"] .pause-patrol .objective-strip {
+  display: grid;
+  gap: 0.28rem;
+  margin: 0;
+  padding: 0.48rem 0.55rem;
+  box-shadow: none;
+}
+
+.pause-patrol .objective-strip p,
+.pause-patrol strong {
+  overflow-wrap: anywhere;
+}
+
+.pause-patrol__meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.pause-patrol__meta .status-chip {
+  min-width: 0;
+  padding: 0.42rem 0.55rem;
+  text-align: left;
+}
+
+.pause-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+body[data-screen="paused"] .pause-settings .setting-button {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  min-height: 2.75rem;
+  justify-content: center;
+  padding: 0.45rem 0.6rem;
+}
+
+body[data-screen="paused"] .pause-settings .switch-state {
+  display: inline-block;
+}
+
+@media (max-width: 620px) {
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode),
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) {
+    width: calc(100% - 0.4rem);
+    margin: 0.2rem auto;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .game-panel,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .game-panel {
+    height: calc(100dvh - 0.4rem);
+    grid-template-rows: 3.15rem minmax(0, 1fr) 3.6rem;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 0.7rem;
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar {
+    grid-template-columns: 2.7rem 2.7rem minmax(4.2rem, 1fr) minmax(4.2rem, 1fr) auto;
+    gap: 0.22rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar .status-chip,
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar .compact-meter,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar .status-chip,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar .compact-meter {
+    padding: 0.25rem 0.3rem;
+  }
+
+  .playbar .status-chip__label {
+    font-size: 0.43rem;
+  }
+
+  .playbar .status-chip strong {
+    font-size: 0.7rem;
+  }
+
+  .playbar .compact-meter__top {
+    gap: 0.15rem;
+    font-size: 0.53rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar .combo-badge,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar .combo-badge {
+    display: none !important;
+  }
+
+  .playbar__actions {
+    gap: 0.2rem;
+  }
+
+  .playbar__actions .icon-button {
+    width: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock {
+    grid-template-columns: 2.8rem minmax(5.5rem, 7rem) 2.8rem minmax(8rem, 9.5rem);
+    gap: 0.22rem;
+    margin: 0;
+  }
+
+  .action-dock .bark-button > span:last-child,
+  .action-dock .chicken-button kbd {
+    display: none;
+  }
+
+  .action-dock .chicken-control {
+    grid-template-columns: minmax(4.8rem, 1fr) auto;
+    gap: 0.22rem;
+    padding-inline: 0.28rem;
+  }
+
+  .action-dock .chicken-button {
+    padding-inline: 0.42rem;
+    font-size: 0.55rem;
+  }
+
+  .pause-card {
+    width: min(31rem, calc(100% - 0.7rem));
+    padding: 0.8rem;
+  }
+
+  body[data-screen="paused"] .pause-patrol .objective-strip {
+    display: grid;
+  }
+}
+
+@media (max-width: 350px) {
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar {
+    grid-template-columns: 2.7rem minmax(4.2rem, 1fr) minmax(4.2rem, 1fr) auto;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar .status-chip--score,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar .status-chip--score {
+    display: none;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock {
+    grid-template-columns: 2.8rem minmax(4.65rem, 1fr) 2.8rem 8rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-control,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-control {
+    grid-template-columns: minmax(4.2rem, 1fr) 2.75rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-button,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.2rem;
+  }
+}
+
+@media (max-width: 620px) and (orientation: portrait) {
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .canvas-wrap,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap {
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) #gameCanvas,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) #gameCanvas {
+    object-fit: cover;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="office"] #gameCanvas,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="office"] #gameCanvas {
+    object-position: 0% 50%;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="living"] #gameCanvas,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="living"] #gameCanvas {
+    object-position: 50% 50%;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="kitchen"] #gameCanvas,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap[data-room="kitchen"] #gameCanvas {
+    object-position: 100% 50%;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 620px) {
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode),
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    margin: 0;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .game-panel,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .game-panel {
+    height: 100dvh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 2.8rem minmax(0, 1fr) 3rem;
+    grid-template-areas:
+      "hud"
+      "canvas"
+      "dock";
+    padding: 0.2rem;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) #gameCanvas,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) #gameCanvas {
+    object-fit: contain;
+    object-position: 50% 50%;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar {
+    display: grid;
+    grid-template-columns: 3.4rem 3.4rem minmax(6rem, 1fr) minmax(6rem, 1fr) 3rem auto;
+    grid-template-rows: 1fr;
+    gap: 0.25rem;
+    padding: 0;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .playbar__actions .icon-button,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .playbar__actions .icon-button {
+    width: 2.55rem;
+    min-width: 2.55rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock {
+    display: grid;
+    grid-template-areas: "prev bark next chicken";
+    grid-template-columns: 3.05rem minmax(6.5rem, 9rem) 3.05rem minmax(10rem, 13rem);
+    grid-template-rows: 1fr;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background: transparent;
+    border: 0;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-control,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-control {
+    grid-template-columns: minmax(5.2rem, 1fr) auto;
+    padding: 0.3rem 0.38rem;
+  }
+
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .game-control,
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .bark-button,
+  body[data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-button,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .game-control,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .bark-button,
+  body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-button {
+    min-height: 0;
+  }
+
+  .pause-card {
+    max-height: calc(100dvh - 0.5rem);
   }
 }

@@ -118,6 +118,8 @@ const ui = {
   relaxedToggle: $("relaxedToggle"),
   soundToggle: $("soundToggle"),
   motionToggle: $("motionToggle"),
+  pauseSoundToggle: $("pauseSoundToggle"),
+  pauseMotionToggle: $("pauseMotionToggle"),
   fullscreenButton: $("fullscreenButton"),
   pauseButton: $("pauseButton"),
   time: $("timeValue"),
@@ -171,23 +173,14 @@ const ui = {
   resultRankProgress: $("resultRankProgress"),
   resultRankLabel: $("resultRankLabel"),
   resultRankTitle: $("resultRankTitle"),
-  prevRoom: $("prevRoomButton"),
-  nextRoom: $("nextRoomButton"),
   prevWindow: $("prevWindowButton"),
   nextWindow: $("nextWindowButton"),
   barkButton: $("barkButton"),
-  roomTabs: [...document.querySelectorAll("[data-room]")],
-  roomTabBar: document.querySelector(".room-tabs"),
   actionDock: document.querySelector(".action-dock"),
-  noiseCards: [$("noise-office"), $("noise-living"), $("noise-kitchen")],
-  roomConditions: [$("condition-office"), $("condition-living"), $("condition-kitchen")],
   safetyMeter: $("safetyValue").closest('[role="meter"]'),
   patienceMeter: $("patienceValue").closest('[role="meter"]'),
   chickenMeter: $("chickenValue").closest('[role="progressbar"]'),
   header: document.querySelector(".site-header"),
-  flatStatus: document.querySelector(".flat-status"),
-  fieldNotes: document.querySelector(".field-notes"),
-  footer: document.querySelector("footer"),
   skipLink: document.querySelector(".skip-link"),
   threatRoster: $("gameStateSummary"),
 };
@@ -764,8 +757,8 @@ function isImmersiveMode() {
   return ui.pageShell.classList.contains("is-immersive-mode");
 }
 
-function isDeclutteredFullscreen() {
-  return isGameFullscreen();
+function isDeclutteredRendering() {
+  return screen === "playing" || screen === "paused" || isGameFullscreen();
 }
 
 function syncImmersiveMode() {
@@ -881,8 +874,8 @@ function setSwitch(button, value, label, key) {
 }
 
 function syncSettings() {
-  setSwitch(ui.soundToggle, settings.sound, "Sound", STORAGE.sound);
-  setSwitch(ui.motionToggle, settings.motion, "Motion effects", STORAGE.motion);
+  [ui.soundToggle, ui.pauseSoundToggle].forEach((button) => setSwitch(button, settings.sound, "Sound", STORAGE.sound));
+  [ui.motionToggle, ui.pauseMotionToggle].forEach((button) => setSwitch(button, settings.motion, "Motion effects", STORAGE.motion));
   setSwitch(ui.relaxedToggle, settings.relaxed, "Relaxed mode", STORAGE.relaxed);
   document.body.dataset.motion = settings.motion ? "on" : "off";
 }
@@ -912,13 +905,9 @@ function setLayer(name) {
   syncImmersiveMode();
   const blocked = screen !== "playing";
   const modalBlocked = ["briefing", "book", "patrolBriefing", "paused", "result"].includes(screen);
-  ui.roomTabBar.inert = blocked;
   ui.actionDock.inert = blocked;
   canvas.inert = blocked;
   ui.header.inert = modalBlocked;
-  ui.flatStatus.inert = modalBlocked;
-  ui.fieldNotes.inert = modalBlocked;
-  ui.footer.inert = modalBlocked;
   ui.skipLink.inert = modalBlocked;
   ui.pauseButton.disabled = screen !== "playing";
   ui.relaxedToggle.disabled = screen === "playing" || screen === "paused";
@@ -1387,15 +1376,13 @@ function setRoom(roomIndex, userInitiated = true) {
   updateRoomUI();
 }
 
-function changeRoom(delta) {
-  if (!game) return;
-  setRoom((game.selectedRoom + delta + ROOMS.length) % ROOMS.length);
-}
-
 function selectWindow(windowId, announceChange = true) {
   if (!game || screen !== "playing") return;
   const target = WINDOWS[windowId];
-  if (target.room !== game.selectedRoom) setRoom(target.room, false);
+  const previousRoom = game.selectedRoom;
+  const primedSneakySwitch = target.room !== previousRoom
+    && game.listening.active?.roomId === previousRoom;
+  if (target.room !== previousRoom) setRoom(target.room, false);
   game.selectedWindow = windowId;
   game.facing = target.x >= game.charlieX ? 1 : -1;
   game.targetX = target.x;
@@ -1404,17 +1391,11 @@ function selectWindow(windowId, announceChange = true) {
   game.lookTarget = null;
   if (!settings.motion) game.charlieX = game.targetX;
   if (announceChange) {
-    playUi();
-    announce(`${target.label} selected.`);
+    if (target.room !== previousRoom) playRoomSwitch(target.room);
+    else playUi();
+    if (!primedSneakySwitch) announce(`${target.label} selected.`);
   }
   updateRoomUI();
-}
-
-function changeWindow(delta) {
-  if (!game || screen !== "playing") return;
-  const list = ROOMS[game.selectedRoom].windows;
-  const index = Math.max(0, list.indexOf(game.selectedWindow));
-  selectWindow(list[(index + delta + list.length) % list.length]);
 }
 
 function addEffect(kind, x, y, options = {}) {
@@ -1839,20 +1820,6 @@ function missVisitor(entity) {
   if (!game.relaxed && game.safety <= 0) endGame("safety", false);
 }
 
-function describeCondition(roomIndex) {
-  const room = game.rooms[roomIndex];
-  if (room.cover.charges > 0) {
-    const source = room.cover.source === "kettle"
-      ? "Kettle cover"
-      : room.cover.source === "doorbell" ? "Doorbell cover" : "TV cover";
-    return `${source} · ${room.cover.charges} bark${room.cover.charges === 1 ? "" : "s"}`;
-  }
-  if (room.environment === "video-call") return "Video call · LOUD";
-  if (room.environment === "tv") return "TV on · MUFFLED";
-  if (room.environment === "kettle") return "Kettle cooling";
-  return room.attention >= 100 ? "Owner listening" : room.attention >= 65 ? "Noticed" : "Clear";
-}
-
 function activateRoomCondition(event) {
   const room = game.rooms[event.roomId];
   if (!room) return;
@@ -2093,32 +2060,12 @@ function syncHUD() {
     ui.threatRoster.innerHTML = `<strong>Watching:</strong> ${currentWindow().label}${visitors.length ? ` <span aria-hidden="true">•</span> ${visitors.join(" · ")}` : " <span aria-hidden=\"true\">•</span> No visitors outside."}`;
   }
 
-  ui.noiseCards.forEach((card, index) => {
-    const attention = active.rooms[index].attention;
-    const level = attention < 35 ? "quiet" : attention < 75 ? "active" : "loud";
-    const listening = active.listening.active?.roomId === index;
-    const spokenLevel = listening ? "owner listening" : level === "quiet" ? "calm" : level === "active" ? "noticed" : "nearly shushed";
-    card.dataset.level = level;
-    card.classList.toggle("is-current", index === active.selectedRoom);
-    card.querySelector(".noise-status").textContent = spokenLevel[0].toUpperCase() + spokenLevel.slice(1);
-    card.setAttribute("aria-label", `${ROOMS[index].name} owner attention: ${spokenLevel}, ${Math.round(attention)} percent`);
-    const bars = [...card.querySelectorAll(".sound-bars i")];
-    const lit = Math.round((attention / 100) * bars.length);
-    bars.forEach((bar, barIndex) => bar.classList.toggle("is-lit", barIndex < lit));
-    ui.roomConditions[index].textContent = game ? describeCondition(index) : "Clear";
-    ui.roomConditions[index].dataset.state = active.rooms[index].environment;
-  });
 }
 
 function updateRoomUI() {
   if (!game) return;
   canvasWrap.dataset.room = ROOMS[game.selectedRoom].id;
   canvasWrap.dataset.window = String(game.selectedWindow);
-  ui.roomTabs.forEach((button) => {
-    const selected = Number(button.dataset.room) === game.selectedRoom;
-    button.classList.toggle("is-active", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  });
   syncCanvasCamera();
 }
 
@@ -2683,7 +2630,7 @@ function drawVisitor(entity) {
   ctx.fill();
   drawApproachArt(entity);
 
-  const decluttered = isDeclutteredFullscreen();
+  const decluttered = isDeclutteredRendering();
   if (!decluttered) {
     ctx.font = '800 12px "Avenir Next", "Segoe UI", sans-serif';
     const pillWidth = clamp(ctx.measureText(entity.label).width + 20, 94, 150);
@@ -2760,6 +2707,10 @@ function drawCharlie() {
   const barking = game.barkUntil > game.elapsed;
   const superMode = game.superUntil > game.elapsed;
   const chickenReady = isImmersiveMode() && game.chicken >= game.chickenGoal;
+  const sneakyReady = Boolean(game.sneaky
+    && game.sneaky.until > game.elapsed
+    && game.sneaky.room === game.selectedRoom);
+  canvasWrap.dataset.sneaky = sneakyReady ? "ready" : "idle";
   const pose = resolvePetPose();
   game.petPose = pose;
   canvasWrap.dataset.petAnimation = pose.state;
@@ -2777,6 +2728,25 @@ function drawCharlie() {
   ctx.ellipse(x, groundY - 6, 66, 15, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+
+  if (sneakyReady) {
+    ctx.save();
+    const glow = 74 + (settings.motion ? Math.sin(game.elapsed * 7) * 6 : 0);
+    const radial = ctx.createRadialGradient(x, y, 12, x, y, glow);
+    radial.addColorStop(0, "rgba(39,124,118,.4)");
+    radial.addColorStop(1, "rgba(39,124,118,0)");
+    ctx.fillStyle = radial;
+    ctx.beginPath();
+    ctx.arc(x, y, glow, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#277c76";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.arc(x, groundY - 72, 70, -Math.PI * 0.9, Math.PI * 0.25);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (superMode || chickenReady) {
     ctx.save();
@@ -2886,7 +2856,7 @@ function drawResultPet() {
 
 function drawEffects() {
   if (!game) return;
-  const decluttered = isDeclutteredFullscreen();
+  const decluttered = isDeclutteredRendering();
   for (const effect of game.effects) {
     const t = 1 - effect.life / effect.maxLife;
     ctx.save();
@@ -2941,7 +2911,7 @@ function drawEffects() {
 }
 
 function drawLegend() {
-  if (isDeclutteredFullscreen()) return;
+  if (isDeclutteredRendering()) return;
   ctx.save();
   ctx.translate(0, 615);
   ctx.fillStyle = "rgba(255,250,240,.94)";
@@ -2967,7 +2937,7 @@ function drawListeningState() {
   if (!active) return;
   const room = ROOMS[active.roomId];
   const quietProgress = clamp((game.elapsed - active.quietSince) / DEFAULT_ACOUSTICS.quietSeconds, 0, 1);
-  if (isDeclutteredFullscreen()) {
+  if (isDeclutteredRendering()) {
     ctx.save();
     const pulse = settings.motion ? 0.45 + Math.sin(game.elapsed * 7) * 0.16 : 0.48;
     ctx.strokeStyle = `rgba(167,68,47,${pulse})`;
@@ -3000,7 +2970,7 @@ function drawListeningState() {
 function drawBossState() {
   const boss = game?.entities.find((entity) => entity.boss);
   if (!boss) return;
-  if (isDeclutteredFullscreen()) return;
+  if (isDeclutteredRendering()) return;
   const width = 380;
   const x = WIDTH / 2 - width / 2;
   ctx.save();
@@ -3030,7 +3000,7 @@ function render() {
     drawEffects();
     drawListeningState();
     drawBossState();
-    if (game.superUntil > game.elapsed && !isDeclutteredFullscreen()) {
+    if (game.superUntil > game.elapsed && !isDeclutteredRendering()) {
       const remaining = Math.max(0, game.superUntil - game.elapsed).toFixed(1);
       ctx.fillStyle = "rgba(36,41,39,.9)";
       roundedRect(1030, 644, 224, 48, 14);
@@ -3301,18 +3271,19 @@ function onKeyDown(event) {
     }
     return;
   }
-  const handled = ["KeyA", "KeyD", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyQ", "KeyE", "Space", "KeyC", "KeyP", "Escape", "Digit1", "Digit2", "Digit3"];
+  const handled = ["ArrowLeft", "ArrowRight", "Space", "KeyC", "KeyP", "Escape"];
   if (!handled.includes(code)) return;
   event.preventDefault();
   if (event.repeat && ["Space", "KeyC", "KeyP", "Escape"].includes(code)) return;
-  if (code === "KeyA") changeRoom(-1);
-  else if (code === "KeyD") changeRoom(1);
-  else if (["ArrowLeft", "ArrowUp", "KeyQ"].includes(code)) changeWindow(-1);
-  else if (["ArrowRight", "ArrowDown", "KeyE"].includes(code)) changeWindow(1);
+  if (code === "ArrowLeft") changeFlatWindow(-1);
+  else if (code === "ArrowRight") changeFlatWindow(1);
   else if (code === "Space") bark();
   else if (code === "KeyC") useChicken();
   else if (["KeyP", "Escape"].includes(code)) pauseGame();
-  else if (code.startsWith("Digit")) setRoom(Number(code.at(-1)) - 1);
+}
+
+function restoreCanvasFocusAfterPointer(event) {
+  if (event.detail > 0) canvas.focus({ preventScroll: true });
 }
 
 function toggleSound() {
@@ -3401,14 +3372,25 @@ function bindEvents() {
   });
   ui.soundToggle.addEventListener("click", toggleSound);
   ui.motionToggle.addEventListener("click", toggleMotion);
+  ui.pauseSoundToggle.addEventListener("click", toggleSound);
+  ui.pauseMotionToggle.addEventListener("click", toggleMotion);
   ui.relaxedToggle.addEventListener("click", toggleRelaxed);
-  ui.prevRoom.addEventListener("click", () => changeRoom(-1));
-  ui.nextRoom.addEventListener("click", () => changeRoom(1));
-  ui.prevWindow.addEventListener("click", () => changeWindow(-1));
-  ui.nextWindow.addEventListener("click", () => changeWindow(1));
-  ui.barkButton.addEventListener("click", bark);
-  ui.chickenButton.addEventListener("click", useChicken);
-  ui.roomTabs.forEach((button) => button.addEventListener("click", () => setRoom(Number(button.dataset.room))));
+  ui.prevWindow.addEventListener("click", (event) => {
+    changeFlatWindow(-1);
+    restoreCanvasFocusAfterPointer(event);
+  });
+  ui.nextWindow.addEventListener("click", (event) => {
+    changeFlatWindow(1);
+    restoreCanvasFocusAfterPointer(event);
+  });
+  ui.barkButton.addEventListener("click", (event) => {
+    bark();
+    restoreCanvasFocusAfterPointer(event);
+  });
+  ui.chickenButton.addEventListener("click", (event) => {
+    useChicken();
+    restoreCanvasFocusAfterPointer(event);
+  });
   canvas.addEventListener("pointerdown", onCanvasPointerDown);
   canvas.addEventListener("pointermove", onCanvasPointerMove, { passive: false });
   canvas.addEventListener("pointerup", onCanvasPointerUp);
@@ -3500,6 +3482,7 @@ window.CharlieGuard = {
   resume: resumeGame,
   bark,
   moveRoom: setRoom,
+  moveWindow: changeFlatWindow,
   selectWindow,
   useChicken,
   spawnThreat(windowId = game?.selectedWindow ?? 2, hp = 1, type = "squirrel") {
