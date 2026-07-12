@@ -4566,6 +4566,7 @@ body[data-screen="paused"] .pause-settings .switch-state {
   }
 
   .action-dock .chicken-button {
+    min-height: 2.75rem;
     padding-inline: 0.42rem;
     font-size: 0.55rem;
   }
