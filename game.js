@@ -1,9 +1,11 @@
 import {
   COLLAR_TAGS,
+  DEFAULT_TRAVEL_ASSIGNMENT_ID,
   MODE_CONFIGS,
   PATROLS,
   REWARDS,
   RANKS,
+  TRAVEL_ASSIGNMENTS,
   getCollarTag,
   getCollarTagsForStampCount,
   getDailyConfig,
@@ -11,6 +13,7 @@ import {
   getPatrol,
   getRankForStampCount,
   getRewardsForStampCount,
+  getTravelAssignment,
 } from "./content.js";
 import { getDirectorCard, getDirectorCards } from "./events.js";
 import { countPawStamps, loadProfile, saveProfile } from "./profile.js";
@@ -18,6 +21,7 @@ import {
   applyRun,
   equipCollarTag,
   evaluatePatrolObjectives,
+  evaluateTravelObjectives,
   getProgressionSnapshot,
   isModeUnlocked,
   isPatrolUnlocked,
@@ -50,12 +54,20 @@ import {
   resolveVisitorBehavior,
   startListening,
 } from "./systems.js";
+import {
+  barkAtFlock,
+  createFlock,
+  getFlockStatus,
+  updateFlock,
+} from "./herding.js";
 
 const WIDTH = 1280;
 const HEIGHT = 720;
 const ROUND_SECONDS = 90;
 const CHICKEN_GOAL = 5;
 const MAX_PATIENCE = 100;
+const CABIN_LANE_Y = Object.freeze({ upper: 382, lower: 520 });
+const CABIN_FENCE_Y = Object.freeze({ upper: 176, lower: 558 });
 const STORAGE = {
   best: "charlie-window-watch-best",
   sound: "charlie-window-watch-sound",
@@ -102,6 +114,7 @@ const ui = {
   campaignButton: $("campaignButton"),
   startButton: $("startButton"),
   dailyButton: $("dailyButton"),
+  travelButton: $("travelButton"),
   patrolBookButton: $("patrolBookButton"),
   howButton: $("howButton"),
   briefingBack: $("briefingBack"),
@@ -129,6 +142,8 @@ const ui = {
   best: $("highScoreValue"),
   safety: $("safetyValue"),
   patience: $("patienceValue"),
+  safetyLabel: $("safetyLabel"),
+  patienceLabel: $("patienceLabel"),
   combo: $("comboValue"),
   chickenFill: $("chickenFill"),
   chickenValue: $("chickenValue"),
@@ -154,8 +169,10 @@ const ui = {
   patrolBriefingTitle: $("patrolBriefingTitle"),
   patrolBriefingDescription: $("patrolBriefingDescription"),
   patrolSpecialRule: $("patrolSpecialRule"),
+  patrolOrdersHeading: $("patrol-orders-heading"),
   patrolObjectives: $("patrolObjectives"),
   collarTagChoices: $("collarTagChoices"),
+  collarTagFieldset: $("collarTagChoices")?.closest("fieldset") ?? null,
   currentPatrolLabel: $("currentPatrolLabel"),
   activeObjective: $("activeObjective"),
   resultPhoto: $("resultPhoto"),
@@ -169,12 +186,14 @@ const ui = {
   resultBarks: $("resultBarks"),
   resultCombo: $("resultCombo"),
   resultObjectives: $("resultObjectives"),
+  resultObjectivesHeading: $("result-objectives-heading"),
   resultReward: $("resultReward"),
   resultRankProgress: $("resultRankProgress"),
   resultRankLabel: $("resultRankLabel"),
   resultRankTitle: $("resultRankTitle"),
   prevWindow: $("prevWindowButton"),
   nextWindow: $("nextWindowButton"),
+  switchFenceButton: $("switchFenceButton"),
   barkButton: $("barkButton"),
   actionDock: document.querySelector(".action-dock"),
   safetyMeter: $("safetyValue").closest('[role="meter"]'),
@@ -193,6 +212,26 @@ const WINDOWS = [
   { id: 4, room: 2, x: 1004, width: 126, label: "kitchen left window" },
   { id: 5, room: 2, x: 1160, width: 126, label: "kitchen right window" },
 ];
+
+const CABIN_SECTORS = WINDOWS.map((windowItem, index) => ({
+  ...windowItem,
+  room: 0,
+  label: `upper fence sector ${index + 1}`,
+}));
+
+const CABIN_SCHEDULE = Object.freeze([
+  { at: 17, kind: "spawn", visitorType: "walker", friendly: true, windowId: 1 },
+  { at: 25, kind: "spawn", visitorType: "squirrel", friendly: false, windowId: 4 },
+  { at: 34, kind: "spawn", visitorType: "neighbour", friendly: true, windowId: 3 },
+  { at: 41, kind: "spawn", visitorType: "pigeon", friendly: false, windowId: 0 },
+  { at: 52, kind: "spawn", visitorType: "robot", friendly: false, windowId: 5 },
+  { at: 62, kind: "spawn", visitorType: "walker", friendly: true, windowId: 2 },
+  { at: 70, kind: "spawn", visitorType: "squirrel", friendly: false, windowId: 1 },
+  { at: 79, kind: "spawn", visitorType: "pigeon", friendly: false, windowId: 4 },
+  { at: 88, kind: "spawn", visitorType: "neighbour", friendly: true, windowId: 5 },
+  { at: 89.4, kind: "spawn", visitorType: "robot", friendly: false, windowId: 0 },
+  { at: 98, kind: "spawn", visitorType: "squirrel", friendly: false, windowId: 3 },
+]);
 
 const ROOMS = [
   { id: "office", name: "Office", left: 18, right: 370, centre: 184, windows: [0], floor: "#d9c8aa" },
@@ -291,6 +330,18 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const choose = (items) => items[Math.floor(Math.random() * items.length)];
 const roomForWindow = (windowId) => WINDOWS[windowId].room;
 const currentWindow = () => WINDOWS[game?.selectedWindow ?? 2];
+const isCabinRun = (run = game?.run) => run?.arena === "cabin" || run?.mode === "travel";
+const activeSectors = (run = game?.run) => isCabinRun(run) ? CABIN_SECTORS : WINDOWS;
+const currentTarget = () => activeSectors()[game?.selectedWindow ?? 2];
+const targetLabel = (windowId) => activeSectors()[windowId]?.label ?? `sector ${Number(windowId) + 1}`;
+const cabinNormalizedX = (x = game?.charlieX ?? WIDTH / 2) => clamp((Number(x) - 64) / (WIDTH - 128), 0, 1);
+const cabinCanvasX = (x = 0.5) => 64 + clamp(Number(x) || 0, 0, 1) * (WIDTH - 128);
+const flockOrderPercent = (status = game?.flockStatus) => {
+  if (!status) return 0;
+  const formation = clamp(status.settledCount / Math.max(1, status.requiredSettled), 0, 1);
+  const hold = clamp(status.settleProgress ?? 0, 0, 1);
+  return Math.round((formation * 0.8 + hold * 0.2) * 100);
+};
 
 function setPetReaction(state, options = {}) {
   if (!game) return;
@@ -313,8 +364,11 @@ function resolvePetPose() {
   if (!game || !settings.motion) return idle("reduced-motion");
 
   const travelDistance = game.targetX - game.charlieX;
-  if (Math.abs(travelDistance) > 1.2) {
-    const state = travelDistance >= 0 ? "running-right" : "running-left";
+  const verticalTravel = (game.targetY ?? game.charlieY ?? 0) - (game.charlieY ?? game.targetY ?? 0);
+  if (Math.hypot(travelDistance, verticalTravel) > 1.2) {
+    const state = Math.abs(travelDistance) < Math.abs(verticalTravel)
+      ? "running"
+      : travelDistance >= 0 ? "running-right" : "running-left";
     return {
       ...getPetAnimationFrame(state, game.elapsed, game.movementStartedAt, { loop: true }),
       source: "movement",
@@ -333,7 +387,7 @@ function resolvePetPose() {
     };
   }
 
-  if (game.listening.active) {
+  if (!isCabinRun() && game.listening.active) {
     return {
       ...getPetAnimationFrame("waiting", game.elapsed, game.listening.active.startedAt, { loop: true }),
       source: "shush",
@@ -350,14 +404,19 @@ function resolvePetPose() {
   const selectedEntity = game.entities
     .filter((entity) => entity.windowId === game.selectedWindow)
     .sort((left, right) => right.progress - left.progress)[0];
+  const selectedTarget = activeSectors()[selectedEntity?.windowId ?? game.selectedWindow];
   const lookTarget = selectedEntity
-    ? { x: WINDOWS[selectedEntity.windowId].x, y: 18 + selectedEntity.progress * 92, source: "visitor" }
+    ? {
+      x: selectedTarget.x,
+      y: isCabinRun() ? 30 + selectedEntity.progress * 120 : 18 + selectedEntity.progress * 92,
+      source: "visitor",
+    }
     : game.lookTarget && game.elapsed < game.lookTarget.until
       ? { ...game.lookTarget, source: "pointer" }
       : null;
   if (lookTarget) {
     return {
-      ...getPetLookFrame(lookTarget.x - game.charlieX, lookTarget.y - 484, { deadzone: 18 }),
+      ...getPetLookFrame(lookTarget.x - game.charlieX, lookTarget.y - (game.charlieY ?? 484), { deadzone: 18 }),
       source: lookTarget.source,
     };
   }
@@ -373,23 +432,31 @@ const formatTime = (seconds) => {
 function resolveRunConfig(options = {}) {
   const mode = options.mode ?? "classic";
   const daily = mode === "daily" ? getDailyConfig(options.date ?? new Date()) : null;
-  const patrolId = options.patrolId ?? daily?.patrolId ?? PATROLS[0].id;
-  const patrol = getPatrol(patrolId) ?? PATROLS[0];
+  const travelAssignment = mode === "travel"
+    ? getTravelAssignment(options.travelAssignmentId ?? options.assignmentId ?? DEFAULT_TRAVEL_ASSIGNMENT_ID)
+      ?? TRAVEL_ASSIGNMENTS[0]
+    : null;
+  const patrolId = travelAssignment ? null : options.patrolId ?? daily?.patrolId ?? PATROLS[0].id;
+  const patrol = travelAssignment ?? getPatrol(patrolId) ?? PATROLS[0];
   const seed = Number.isFinite(options.seed)
     ? options.seed >>> 0
-    : daily?.seed ?? ((Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0);
-  const collarTag = getCollarTag(options.collarTagId) ?? null;
+    : travelAssignment ? 0xc2ec4a : daily?.seed ?? ((Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0);
+  const collarTag = travelAssignment ? null : getCollarTag(options.collarTagId) ?? null;
   const duration = mode === "endless"
     ? Number.POSITIVE_INFINITY
     : mode === "classic" ? ROUND_SECONDS : mode === "daily" ? MODE_CONFIGS.daily.durationSeconds : patrol.durationSeconds;
   return {
     mode,
     patrol,
-    patrolId: patrol.id,
+    patrolId: travelAssignment ? null : patrol.id,
+    travelAssignmentId: travelAssignment?.id ?? null,
+    travelAssignment,
+    arena: travelAssignment?.arena ?? "flat",
     seed,
     daily,
     collarTag,
     tagModifiers: collarTag?.modifiers ?? {},
+    roomConditions: patrol.roomConditions ?? {},
     duration,
   };
 }
@@ -400,6 +467,7 @@ function baseRoomEnvironment(run, roomIndex) {
 }
 
 function createScheduledEvents(run) {
+  if (isCabinRun(run)) return CABIN_SCHEDULE.map((event, index) => ({ id: `cabin-${index + 1}`, ...event }));
   if (run.mode === "classic" || run.mode === "endless") {
     return [
       { id: "classic-call", kind: "condition", at: 18, roomId: 0, environment: "video-call", duration: 9 },
@@ -438,6 +506,9 @@ function newGame(options = {}) {
     ?? CHICKEN_GOAL;
   const duration = run.duration;
   const listening = createListeningState({ patience: MAX_PATIENCE, maxPatience: MAX_PATIENCE });
+  const cabin = isCabinRun(run);
+  const flock = cabin ? createFlock(run.seed, { sheepCount: run.travelAssignment?.sheepCount ?? 6 }) : null;
+  const flockStatus = flock ? getFlockStatus(flock) : null;
   return {
     run,
     rng,
@@ -449,7 +520,7 @@ function newGame(options = {}) {
     combo: 1,
     bestCombo: 1,
     safety: 3,
-    patience: listening.patience,
+    patience: cabin ? flockOrderPercent(flockStatus) : listening.patience,
     listening,
     chicken: 0,
     chickenGoal,
@@ -460,6 +531,9 @@ function newGame(options = {}) {
     nextId: 1,
     nextBarkId: 1,
     entities: [],
+    flock,
+    flockStatus,
+    flockActive: !cabin,
     pendingSpawns: [],
     scheduledEvents: createScheduledEvents(run),
     eventCursor: 0,
@@ -475,8 +549,11 @@ function newGame(options = {}) {
     })),
     selectedRoom: 1,
     selectedWindow: 2,
+    charlieLane: cabin ? "lower" : null,
     charlieX: WINDOWS[2].x,
     targetX: WINDOWS[2].x,
+    charlieY: cabin ? CABIN_LANE_Y.lower : 586,
+    targetY: cabin ? CABIN_LANE_Y.lower : 586,
     facing: 1,
     moving: 0,
     movementStartedAt: 0,
@@ -506,6 +583,10 @@ function newGame(options = {}) {
     violations: 0,
     superGuards: 0,
     coatRepelled: 0,
+    flockSettled: 0,
+    bestFlockSize: flockStatus?.settledCount ?? flockStatus?.inZoneCount ?? 0,
+    sheepBarks: 0,
+    cabinTutorialShown: false,
     distinctWindowsGuarded: new Set(),
     discoveredVisitors: new Set(),
     parcelsDelivered: 0,
@@ -776,8 +857,11 @@ function syncImmersiveMode() {
     requestAnimationFrame(syncCanvasCamera);
   } else {
     resetCanvasGesture();
-    canvasWrap.style.removeProperty("--camera-x");
-    delete canvasWrap.dataset.cameraFactor;
+    if (isCabinRun() && game) syncCanvasCamera();
+    else {
+      canvasWrap.style.removeProperty("--camera-x");
+      delete canvasWrap.dataset.cameraFactor;
+    }
   }
 }
 
@@ -1044,6 +1128,7 @@ function closePatrolBook() {
 }
 
 function specialRuleFor(run) {
+  if (run.mode === "travel") return ["Two-fence duty", "Use position to guide ordinary sheep, bark only for the tagged stubborn ewe, and switch upward whenever the cabin fence needs Charlie."];
   if (run.mode === "endless") return ["Overtime rules", "Threat combinations intensify every thirty seconds. The watch ends only when Safety or Patience runs out."];
   if (run.mode === "daily") return [run.daily.twist.label, "Today's visitor schedule and modifier are deterministic for this date."];
   const rules = {
@@ -1077,12 +1162,17 @@ function renderCollarChoices(selectedId) {
 function openPatrolBriefing(options = {}) {
   const mode = options.mode ?? "campaign";
   const daily = mode === "daily" ? getDailyConfig(options.date ?? new Date()) : null;
-  const patrolId = options.patrolId ?? daily?.patrolId ?? PATROLS[0].id;
-  const patrol = getPatrol(patrolId) ?? PATROLS[0];
+  const travelAssignment = mode === "travel"
+    ? getTravelAssignment(options.travelAssignmentId ?? options.assignmentId ?? DEFAULT_TRAVEL_ASSIGNMENT_ID)
+      ?? TRAVEL_ASSIGNMENTS[0]
+    : null;
+  const patrolId = travelAssignment ? null : options.patrolId ?? daily?.patrolId ?? PATROLS[0].id;
+  const patrol = travelAssignment ?? getPatrol(patrolId) ?? PATROLS[0];
   pendingRun = {
     mode,
-    patrolId: patrol.id,
-    collarTagId: profile.selectedCollarTagId,
+    patrolId: travelAssignment ? null : patrol.id,
+    travelAssignmentId: travelAssignment?.id ?? null,
+    collarTagId: travelAssignment ? null : profile.selectedCollarTagId,
     seed: options.seed ?? daily?.seed ?? null,
     date: daily?.dateKey,
   };
@@ -1090,17 +1180,22 @@ function openPatrolBriefing(options = {}) {
   const backToBook = patrolBriefingReturn === "book";
   ui.patrolBriefingBack.textContent = backToBook ? "← Patrol Book" : "← Title";
   ui.patrolBriefingBack.setAttribute("aria-label", backToBook ? "Return to Patrol Book" : "Return to title screen");
-  const modeLabel = mode === "campaign" ? `Case file ${String(patrol.number).padStart(2, "0")}` : MODE_CONFIGS[mode]?.label ?? "Patrol briefing";
+  const modeLabel = mode === "campaign" ? `Case file ${String(patrol.number).padStart(2, "0")}` : mode === "travel" ? "Travel File 01 · Czechia" : MODE_CONFIGS[mode]?.label ?? "Patrol briefing";
   ui.patrolBriefingEyebrow.textContent = modeLabel;
   ui.patrolBriefingTitle.textContent = mode === "endless" ? "Overtime Watch" : mode === "daily" ? `Today's Report · ${daily.dateKey}` : patrol.title;
-  ui.patrolBriefingDescription.textContent = mode === "endless" ? MODE_CONFIGS.endless.description : mode === "daily" ? `${patrol.briefing} Today's twist: ${daily.twist.label}.` : patrol.briefing;
+  ui.patrolBriefingDescription.textContent = mode === "endless" ? MODE_CONFIGS.endless.description : mode === "daily" ? `${patrol.briefing} Today's twist: ${daily.twist.label}.` : mode === "travel" ? `${patrol.briefing} ${patrol.tagline}` : patrol.briefing;
+  ui.patrolOrdersHeading.textContent = mode === "travel" ? "Travel orders" : "Paw-stamp orders";
   const earned = new Set(profile.campaign.stampsByPatrol[patrol.id] ?? []);
   ui.patrolObjectives.innerHTML = mode === "campaign"
     ? patrol.objectives.map((objective) => `<li class="${earned.has(objective.id) ? "is-earned" : ""}"><span class="objective-stamp" aria-hidden="true">${earned.has(objective.id) ? "●" : "○"}</span><span><strong>${escapeHtml(objective.label)}</strong><small>${escapeHtml(objective.description)}</small></span></li>`).join("")
+    : mode === "travel"
+      ? patrol.travelOrders.map((order) => `<li><span class="objective-stamp" aria-hidden="true">◎</span><span><strong>${escapeHtml(order.label)}</strong><small>${escapeHtml(order.description)}</small></span></li>`).join("")
     : `<li><span class="objective-stamp" aria-hidden="true">◎</span><span><strong>${mode === "endless" ? "Stay on watch" : "Secure today's route"}</strong><small>${mode === "endless" ? "Build the longest possible overtime record." : "Complete the seeded patrol and improve today's local best."}</small></span></li>`;
   const [ruleTitle, ruleText] = specialRuleFor(resolveRunConfig(pendingRun));
   ui.patrolSpecialRule.innerHTML = `<span class="book-label">Special condition</span><strong>${escapeHtml(ruleTitle)}</strong><p>${escapeHtml(ruleText)}</p>`;
-  renderCollarChoices(profile.selectedCollarTagId);
+  if (ui.collarTagFieldset) ui.collarTagFieldset.hidden = mode === "travel";
+  if (mode !== "travel") renderCollarChoices(profile.selectedCollarTagId);
+  ui.beginPatrolButton.firstChild.textContent = mode === "travel" ? "Begin cabin duty " : "Begin this patrol ";
   setLayer("patrolBriefing");
   ui.patrolBriefing.focus({ preventScroll: true });
   ui.patrolBriefingBack.focus({ preventScroll: true });
@@ -1152,8 +1247,10 @@ function startRound(options = pendingRun) {
   window.setTimeout(() => {
     if (screen === "playing") window.scrollTo(0, 0);
   }, 420);
-  const label = game.run.mode === "campaign" ? game.run.patrol.title : MODE_CONFIGS[game.run.mode]?.label ?? "Patrol";
-  announce(`${game.relaxed ? "Relaxed " : ""}${label} started. Charlie is in the living room, watching the centre window.`);
+  const label = game.run.mode === "campaign" ? game.run.patrol.title : game.run.mode === "travel" ? game.run.travelAssignment.title : MODE_CONFIGS[game.run.mode]?.label ?? "Patrol";
+  announce(isCabinRun()
+    ? `${game.relaxed ? "Relaxed " : ""}${label} started. Charlie is at the sheep fence. Move left and right to apply herding pressure, then use Up Arrow when the upper fence needs defending.`
+    : `${game.relaxed ? "Relaxed " : ""}${label} started. Charlie is in the living room, watching the centre window.`);
   canvas.focus({ preventScroll: true });
 }
 
@@ -1165,8 +1262,9 @@ function replayCurrentRun() {
   startRound({
     mode: game.run.mode,
     patrolId: game.run.patrolId,
+    travelAssignmentId: game.run.travelAssignmentId,
     collarTagId: game.run.collarTag?.id ?? null,
-    seed: game.run.mode === "daily" ? game.run.seed : null,
+    seed: ["daily", "travel"].includes(game.run.mode) ? game.run.seed : null,
     date: game.run.daily?.dateKey ?? null,
   });
 }
@@ -1195,6 +1293,7 @@ function buildRunResult(success) {
   return {
     mode: game.run.mode,
     patrolId: game.run.patrolId,
+    travelAssignmentId: game.run.travelAssignmentId,
     dailyDateKey: game.run.daily?.dateKey ?? null,
     completed: success,
     score: Math.max(0, Math.round(game.score)),
@@ -1212,6 +1311,9 @@ function buildRunResult(success) {
       friendsSpared: game.friendsSpared,
       superGuards: game.superGuards,
       coatRepelled: game.coatRepelled,
+      flockSettled: game.flockStatus?.settleMarks ?? game.flockSettled,
+      bestFlockSize: game.bestFlockSize,
+      sheepBarks: game.sheepBarks,
       distinctWindowsGuarded: game.distinctWindowsGuarded.size,
       windowsGuarded: [...game.distinctWindowsGuarded],
       accuracy: barks > 0 ? game.correctBarks / barks : 0,
@@ -1226,17 +1328,24 @@ function renderProgressionResults(runResult, awards) {
   const snapshot = getProgressionSnapshot(profile);
   const modeLabels = {
     campaign: `Case ${String(game.run.patrol.number).padStart(2, "0")} · ${game.run.patrol.title}`,
+    travel: `Travel File · ${game.run.travelAssignment?.title ?? "Czech Cabin Duty"}`,
     classic: "Classic Patrol",
     daily: `Today's Patrol · ${game.run.daily?.dateKey ?? ""}`,
     endless: "Overtime Watch",
   };
   ui.resultMode.textContent = modeLabels[game.run.mode] ?? "Patrol report";
+  ui.resultObjectivesHeading.textContent = game.run.mode === "travel" ? "Travel orders" : "Paw-stamp orders";
 
   if (game.run.mode === "campaign") {
     const results = evaluatePatrolObjectives(game.run.patrolId, runResult);
     const newlyEarned = new Set(awards.newlyAwardedStampIds);
     ui.resultObjectives.innerHTML = results.map(({ objective, achieved }) => `<div class="result-objective ${achieved ? "is-earned" : ""}">
       <span aria-hidden="true">${achieved ? "●" : "○"}</span><p><strong>${escapeHtml(objective.label)}${newlyEarned.has(objective.id) ? " · NEW" : ""}</strong><small>${escapeHtml(objective.description)}</small></p>
+    </div>`).join("");
+  } else if (game.run.mode === "travel") {
+    const results = evaluateTravelObjectives(game.run.travelAssignmentId, runResult);
+    ui.resultObjectives.innerHTML = results.map(({ objective, achieved }) => `<div class="result-objective ${achieved ? "is-earned" : ""}">
+      <span aria-hidden="true">${achieved ? "●" : "○"}</span><p><strong>${escapeHtml(objective.label)}</strong><small>${escapeHtml(objective.description)}</small></p>
     </div>`).join("");
   } else if (game.run.mode === "daily") {
     const dateKey = game.run.daily?.dateKey ?? runResult.dailyDateKey;
@@ -1260,6 +1369,10 @@ function renderProgressionResults(runResult, awards) {
     if (awards.rankChanged) messages.push(`Promoted to ${snapshot.rank.title}`);
     if (rewardLabels.length) messages.push(`Unlocked: ${rewardLabels.join(", ")}`);
     ui.resultReward.innerHTML = `<span aria-hidden="true">${messages.length ? "★" : "✦"}</span><p><strong>${messages[0] ?? "Patrol recorded"}</strong><small>${messages.slice(1).join(" · ") || `${snapshot.stampCount} of ${snapshot.maximumStampCount} Paw Stamps filed.`}</small></p>`;
+  } else if (game.run.mode === "travel") {
+    const travelBest = profile.lifetime.byMode.travel.bestScore;
+    const marks = runResult.stats.flockSettled;
+    ui.resultReward.innerHTML = `<span aria-hidden="true">✦</span><p><strong>Travel report filed · ${travelBest.toLocaleString()}</strong><small>${marks} of 3 Flock Settled marks · ${runResult.stats.sheepBarks} sheep-side bark${runResult.stats.sheepBarks === 1 ? "" : "s"}.</small></p>`;
   } else if (game.run.mode === "daily") {
     const dateKey = game.run.daily?.dateKey ?? runResult.dailyDateKey;
     const dailyBest = profile.daily.bestByDate[dateKey] ?? runResult.score;
@@ -1275,6 +1388,7 @@ function renderProgressionResults(runResult, awards) {
   const next = game.run.mode === "campaign" ? getNextPatrol(game.run.patrolId) : null;
   ui.nextPatrolButton.hidden = false;
   ui.nextPatrolButton.disabled = false;
+  delete ui.nextPatrolButton.dataset.travelAssignmentId;
   if (next && isPatrolUnlocked(profile, next.id)) {
     ui.nextPatrolButton.dataset.nextPatrolId = next.id;
     ui.nextPatrolButton.dataset.nextMode = "campaign";
@@ -1283,7 +1397,13 @@ function renderProgressionResults(runResult, awards) {
     ui.nextPatrolButton.dataset.nextPatrolId = PATROLS.at(-1).id;
     ui.nextPatrolButton.dataset.nextMode = "endless";
     ui.nextPatrolButton.firstChild.textContent = "Begin Overtime Watch ";
+  } else if (game.run.mode === "travel") {
+    ui.nextPatrolButton.dataset.nextPatrolId = "";
+    ui.nextPatrolButton.dataset.nextMode = "travel";
+    ui.nextPatrolButton.dataset.travelAssignmentId = game.run.travelAssignmentId;
+    ui.nextPatrolButton.firstChild.textContent = "Review Travel File ";
   } else {
+    delete ui.nextPatrolButton.dataset.travelAssignmentId;
     ui.nextPatrolButton.dataset.nextPatrolId = campaignResumePatrol(snapshot).id;
     ui.nextPatrolButton.dataset.nextMode = "campaign";
     ui.nextPatrolButton.firstChild.textContent = "Return to campaign ";
@@ -1306,16 +1426,27 @@ function endGame(reason, success = false) {
 
   const patienceLoss = reason === "quiet";
   const safetyLoss = reason === "safety";
-  ui.resultTitle.textContent = success ? "The flat is secure." : patienceLoss ? "Mandatory quiet break." : "A suspicious element slipped through.";
-  if (success && game.score >= 3600) {
+  if (game.run.mode === "travel") {
+    ui.resultTitle.textContent = success ? "Cabin secure. Flock filed." : safetyLoss ? "The upper fence was breached." : "The sheep declined to cooperate.";
+    ui.resultSubtitle.textContent = success
+      ? "Charlie completed an extremely official agricultural assignment. The sheep remain unconvinced."
+      : safetyLoss
+        ? "The flock is safe, but cabin security needs another pass."
+        : `Cabin secure; ${game.flockStatus?.settleMarks ?? 0} of 3 flock reports completed. The grass remains under review.`;
+  } else if (success && game.score >= 3600) {
+    ui.resultTitle.textContent = "The flat is secure.";
     ui.resultSubtitle.textContent = "Charlie, Supreme Window Warden: flawless ears, elite tactics, chicken earned.";
   } else if (success) {
+    ui.resultTitle.textContent = "The flat is secure.";
     ui.resultSubtitle.textContent = "Workday finished. Charlie has thoroughly informed the neighbourhood.";
   } else if (patienceLoss) {
+    ui.resultTitle.textContent = "Mandatory quiet break.";
     ui.resultSubtitle.textContent = "The guarding was excellent. The indoor voice was not.";
   } else if (reason === "boss") {
+    ui.resultTitle.textContent = "The Mystery Coat escaped.";
     ui.resultSubtitle.textContent = "The coat remains at large. The incident file is staying open.";
   } else {
+    ui.resultTitle.textContent = "A suspicious element slipped through.";
     ui.resultSubtitle.textContent = "Even elite security professionals need another patrol.";
   }
   ui.resultPhoto.src = success ? (game.score >= 3000 ? "assets/photos/charlie-bark.jpg" : "assets/photos/charlie-hero.jpg") : safetyLoss ? "assets/photos/charlie-caught.jpg" : "assets/photos/charlie-rest.jpg";
@@ -1325,6 +1456,16 @@ function endGame(reason, success = false) {
   ui.resultSwitches.textContent = String(game.switches);
   ui.resultBarks.textContent = String(game.barks);
   ui.resultCombo.textContent = `×${game.bestCombo}`;
+  const resultStatLabels = [
+    [ui.resultGuards, game.run.mode === "travel" ? "Upper-fence guards" : "Threats guarded"],
+    [ui.resultSwitches, game.run.mode === "travel" ? "Fence switches" : "Tactical switches"],
+    [ui.resultBarks, game.run.mode === "travel" ? "Total barks" : "Total barks"],
+    [ui.resultCombo, game.run.mode === "travel" ? "Best guard streak" : "Best combo"],
+  ];
+  resultStatLabels.forEach(([value, text]) => {
+    const term = value?.closest("div")?.querySelector("dt");
+    if (term) term.textContent = text;
+  });
   renderProgressionResults(runResult, applied.awards);
   syncCareerUI();
   syncHUD();
@@ -1338,6 +1479,7 @@ function endGame(reason, success = false) {
 
 function setRoom(roomIndex, userInitiated = true) {
   if (!game || screen !== "playing") return;
+  if (isCabinRun()) return;
   const next = clamp(roomIndex, 0, ROOMS.length - 1);
   const previous = game.selectedRoom;
   if (previous === next) return;
@@ -1376,8 +1518,49 @@ function setRoom(roomIndex, userInitiated = true) {
   updateRoomUI();
 }
 
+function switchFence(requestedLane = null, userInitiated = true) {
+  if (!game || screen !== "playing" || !isCabinRun()) return;
+  const next = requestedLane === "upper" || requestedLane === "lower"
+    ? requestedLane
+    : game.charlieLane === "upper" ? "lower" : "upper";
+  if (next === "lower" && userInitiated) game.flockActive = true;
+  if (next === game.charlieLane) return;
+  game.charlieLane = next;
+  game.targetY = CABIN_LANE_Y[next];
+  game.moving = settings.motion ? 1 : 0;
+  game.movementStartedAt = game.elapsed;
+  game.lookTarget = null;
+  if (!settings.motion) game.charlieY = game.targetY;
+  if (userInitiated) {
+    game.switches += 1;
+    playRoomSwitch(next === "upper" ? 0 : 2);
+    showToast(next === "upper" ? "Upper fence duty" : "Sheep duty", "bonus");
+    announce(next === "upper"
+      ? "Charlie moved to the upper fence. Bark at suspicious visitors; let friendly visitors pass."
+      : "Charlie moved to the sheep fence. Move alongside the flock to guide them into the shaded patch.");
+  }
+  updateRoomUI();
+}
+
 function selectWindow(windowId, announceChange = true) {
   if (!game || screen !== "playing") return;
+  if (isCabinRun()) {
+    if (game.charlieLane === "lower") game.flockActive = true;
+    const target = CABIN_SECTORS[clamp(Number(windowId) || 0, 0, CABIN_SECTORS.length - 1)];
+    game.selectedWindow = target.id;
+    game.facing = target.x >= game.charlieX ? 1 : -1;
+    game.targetX = target.x;
+    game.moving = settings.motion ? 1 : 0;
+    game.movementStartedAt = game.elapsed;
+    game.lookTarget = null;
+    if (!settings.motion) game.charlieX = game.targetX;
+    if (announceChange) {
+      playUi();
+      announce(`${game.charlieLane === "upper" ? target.label : `sheep-fence position ${target.id + 1}`} selected.`);
+    }
+    updateRoomUI();
+    return;
+  }
   const target = WINDOWS[windowId];
   const previousRoom = game.selectedRoom;
   const primedSneakySwitch = target.room !== previousRoom
@@ -1532,13 +1715,95 @@ function repel(entity, options = {}) {
     game.bossDefeated = true;
   }
   if (options.petReaction !== false) setPetReaction("review");
-  addEffect("burst", WINDOWS[entity.windowId].x, 150, { color: "#e6ad3c", text: `+${earned}`, life: 1 });
+  addEffect("burst", activeSectors()[entity.windowId].x, 150, { color: "#e6ad3c", text: `+${earned}`, life: 1 });
   playSuccess();
   showToast(options.perfectCrime ? `PERFECT CRIME! +${earned}` : `Guarded! +${earned}`, options.perfectCrime ? "bonus" : "good");
-  announce(`${entity.label} chased away. Score plus ${earned}${options.perfectCrime ? ", under perfect sound cover" : ""}.`);
+  announce(`${entity.label} chased away from the ${targetLabel(entity.windowId)}. Score plus ${earned}${options.perfectCrime ? ", under perfect sound cover" : ""}.`);
+}
+
+function cabinBark() {
+  if (!game || screen !== "playing" || game.barkCooldown > 0) return;
+  const cooldownMultiplier = game.run.tagModifiers.barkCooldownMultiplier ?? 1;
+  game.barkCooldown = 0.28 * cooldownMultiplier;
+  game.barkUntil = game.elapsed + 0.2;
+  game.barks += 1;
+  game.shake = settings.motion ? 0.12 : 0;
+  playBark(game.selectedWindow);
+  const barkY = game.charlieLane === "upper" ? 310 : 548;
+  addEffect("woof", game.charlieX, barkY, { text: "WOOF!", life: 0.55 });
+
+  if (game.charlieLane === "lower") {
+    game.flockActive = true;
+    game.sheepBarks += 1;
+    const beforeStatus = getFlockStatus(game.flock);
+    const result = barkAtFlock(game.flock, { now: game.elapsed, charlieX: cabinNormalizedX(game.charlieX) });
+    game.flock = result?.state ?? result?.flock ?? result;
+    game.flockStatus = getFlockStatus(game.flock);
+    const previouslyCompliant = new Set(beforeStatus.compliantStubbornIds ?? []);
+    const stubbornResponded = (game.flockStatus.compliantStubbornIds ?? [])
+      .some((id) => !previouslyCompliant.has(id));
+    if (stubbornResponded) {
+      game.correctBarks += 1;
+      game.score += 90;
+      game.combo = Math.min(5, game.combo + 1);
+      game.bestCombo = Math.max(game.bestCombo, game.combo);
+      setPetReaction("review");
+      showToast("Grudging compliance · +90", "good");
+      addEffect("burst", game.charlieX, 603, { color: "#e6ad3c", text: "FINE.", life: 0.9 });
+      announce("The tagged ewe acknowledged Charlie's authority and took several deeply reluctant steps.");
+    } else {
+      game.unnecessary += 1;
+      game.score = Math.max(0, game.score - 15);
+      game.combo = 1;
+      setPetReaction("failed");
+      showToast("…MUNCH · ordinary sheep scattered", "warning");
+      addEffect("alert", game.charlieX, 612, { color: "#596b64", text: "…MUNCH", life: 0.85 });
+      announce("The ordinary sheep offered an ear twitch and continued eating. Herd them with Charlie's position instead.");
+    }
+    syncHUD();
+    return;
+  }
+
+  const entity = game.entities
+    .filter((candidate) => candidate.windowId === game.selectedWindow)
+    .sort((left, right) => right.progress - left.progress)[0];
+  if (!entity) {
+    game.unnecessary += 1;
+    game.combo = 1;
+    game.score = Math.max(0, game.score - 20);
+    setPetReaction("failed");
+    showToast("Empty fence · −20", "warning");
+    announce("No one was at that upper-fence sector.");
+  } else if (entity.friendly) {
+    game.entities.splice(game.entities.indexOf(entity), 1);
+    game.unnecessary += 1;
+    game.friendBarks += 1;
+    game.combo = 1;
+    game.score = Math.max(0, game.score - 60);
+    setPetReaction("failed");
+    showToast("Friendly passer-by · −60", "warning");
+    announce(`${entity.label} was friendly. Let round-marker visitors pass the cabin.`);
+  } else {
+    game.correctBarks += 1;
+    entity.hp -= 1 + (game.run.tagModifiers.barkDamageBonus ?? 0) + (game.superUntil > game.elapsed ? 1 : 0);
+    if (entity.hp <= 0) {
+      repel(entity, { petReaction: true });
+    } else {
+      entity.progress = Math.max(0.08, entity.progress - 0.18);
+      setPetReaction("running");
+      playHit(entity.windowId);
+      showToast(`${entity.label}: ${entity.hp} bark${entity.hp === 1 ? "" : "s"} left`, "warning");
+      announce(`${entity.label} backed away but remains at the upper fence.`);
+    }
+  }
+  syncHUD();
 }
 
 function bark() {
+  if (isCabinRun()) {
+    cabinBark();
+    return;
+  }
   if (!game || screen !== "playing" || game.barkCooldown > 0) return;
   const cooldownMultiplier = game.run.tagModifiers.barkCooldownMultiplier ?? 1;
   game.barkCooldown = 0.28 * cooldownMultiplier;
@@ -1682,6 +1947,24 @@ function bark() {
 
 function useChicken() {
   if (!game || screen !== "playing" || game.chicken < game.chickenGoal) return;
+  if (isCabinRun()) {
+    if (game.charlieLane === "lower") game.flockActive = true;
+    game.chicken = 0;
+    game.chickens += 1;
+    const superDuration = 6 * (game.run.tagModifiers.superDurationMultiplier ?? 1);
+    game.superUntil = game.elapsed + superDuration;
+    game.superStartedAt = game.elapsed;
+    game.entities.forEach((entity) => {
+      if (!entity.friendly) entity.hp = Math.max(1, entity.hp - 1);
+    });
+    setPetReaction("jumping");
+    playChicken();
+    addEffect("chicken", game.charlieX, (game.charlieY ?? 520) - 70, { text: "HERDING FOCUS!", color: "#e6ad3c", life: 1.3 });
+    showToast(`Herding Focus: ${superDuration.toFixed(1)} seconds!`, "bonus");
+    announce(`Chicken deployed. Charlie's herding-pressure range is wider for ${superDuration.toFixed(1)} seconds.`);
+    syncHUD();
+    return;
+  }
   game.chicken = 0;
   game.chickens += 1;
   const superDuration = 6 * (game.run.tagModifiers.superDurationMultiplier ?? 1);
@@ -1728,7 +2011,7 @@ function spawnVisitor(options = {}) {
     ? (firstVisitor && !occupied.has(game.selectedWindow) ? WINDOWS[game.selectedWindow] : choices[Math.floor(game.rng() * choices.length)])
     : WINDOWS[options.windowId];
   if (!windowItem || occupied.has(windowItem.id)) windowItem = choices[Math.floor(game.rng() * choices.length)];
-  const friendlyRate = game.run.patrol.id === "special-delivery" ? 0.34 : phase === 1 ? 0.28 : 0.2;
+  const friendlyRate = game.run.patrol.id === "special-delivery" ? 0.34 : isCabinRun() ? 0.3 : phase === 1 ? 0.28 : 0.2;
   const typedFriend = FRIENDS.some((item) => item.key === options.type);
   const typedThreat = THREATS.some((item) => item.key === options.type);
   const friendly = options.friendly
@@ -1741,10 +2024,10 @@ function spawnVisitor(options = {}) {
     ? options.type ? FRIENDS.find((item) => item.key === options.type) ?? FRIENDS[Math.floor(game.rng() * FRIENDS.length)] : FRIENDS[Math.floor(game.rng() * FRIENDS.length)]
     : options.type ? THREATS.find((item) => item.key === options.type) ?? threatChoices[Math.floor(game.rng() * threatChoices.length)] : threatChoices[Math.floor(game.rng() * threatChoices.length)];
   const maxHp = friendly ? 0 : clamp(options.hp ?? source.hp, 1, 9);
-  const difficultyScale = 1 + Math.max(0, game.run.patrol.difficulty - 1) * 0.025;
+  const difficultyScale = 1 + Math.max(0, Number(game.run.patrol.difficulty ?? (isCabinRun() ? 3 : 1)) - 1) * 0.025;
   const endlessScale = game.run.mode === "endless" ? 1 + Math.floor(game.elapsed / 30) * 0.06 : 1;
   const dailyScale = game.run.daily?.twist?.visitorSpeedMultiplier ?? 1;
-  const speedBase = [0.105, 0.13, 0.158][phase] * difficultyScale * endlessScale * dailyScale * (game.relaxed ? 0.72 : 1);
+  const speedBase = (isCabinRun() ? [0.085, 0.105, 0.128] : [0.105, 0.13, 0.158])[phase] * difficultyScale * endlessScale * dailyScale * (game.relaxed ? 0.72 : 1);
   const entity = {
     id: game.nextId++,
     key: source.key,
@@ -1769,7 +2052,7 @@ function spawnVisitor(options = {}) {
   if (entity.boss) game.bossActive = true;
   if (friendly && source.key === "postie") {
     playDoorbell(windowItem.id);
-    const coverCharges = Number(game.run.patrol.roomConditions.doorbell?.attentionCoverCharges) || 0;
+    const coverCharges = Number(game.run.roomConditions.doorbell?.attentionCoverCharges) || 0;
     if (coverCharges > 0) {
       const roomId = roomForWindow(windowItem.id);
       game.rooms[roomId].cover = grantCoverCharges(game.rooms[roomId].cover, {
@@ -1781,7 +2064,7 @@ function spawnVisitor(options = {}) {
     }
   }
   if (entity.key === "pigeon" && !hadPigeon && !entity.behavior.paired) resolveEntityBehavior(entity, "spawned");
-  announce(`${friendly ? "Friendly" : "Suspicious"} visitor at the ${windowItem.label}: ${entity.label}.`);
+  announce(`${friendly ? "Friendly" : "Suspicious"} visitor at the ${targetLabel(windowItem.id)}: ${entity.label}.`);
   return entity;
 }
 
@@ -1814,10 +2097,10 @@ function missVisitor(entity) {
   game.missed += 1;
   setPetReaction("failed");
   game.safety = game.relaxed ? Math.max(1, game.safety - 0.5) : Math.max(0, game.safety - 1);
-  addEffect("alert", WINDOWS[entity.windowId].x, 180, { text: "TOO CLOSE!", color: "#b84d37", life: 1.1 });
+  addEffect("alert", activeSectors()[entity.windowId].x, 180, { text: "TOO CLOSE!", color: "#b84d37", life: 1.1 });
   playAlert(entity.windowId);
   showToast("A threat reached the glass!", "warning");
-  announce(`${entity.label} reached the ${WINDOWS[entity.windowId].label}.`, true);
+  announce(`${entity.label} reached the ${targetLabel(entity.windowId)}.`, true);
   if (!game.relaxed && game.safety <= 0) endGame("safety", false);
 }
 
@@ -1884,8 +2167,106 @@ function processDirector() {
   }
 }
 
+function loosenFlockAfterMark(flock) {
+  const status = getFlockStatus(flock);
+  if (status.completed || status.settledCount < status.requiredSettled) return flock;
+  const inZone = new Set(status.inZoneIds);
+  const moveCount = status.settledCount - status.requiredSettled + 1;
+  const candidates = flock.sheep
+    .filter((sheep) => inZone.has(sheep.id))
+    .sort((left, right) => Number(left.stubborn) - Number(right.stubborn) || left.id.localeCompare(right.id));
+  const movedIds = new Set(candidates.slice(0, moveCount).map((sheep) => sheep.id));
+  let offset = 0;
+  return {
+    ...flock,
+    sheep: flock.sheep.map((sheep) => {
+      if (!movedIds.has(sheep.id)) return sheep;
+      const x = Math.max(flock.config.minX, flock.config.settledZone.min - 0.1 - offset * 0.055);
+      offset += 1;
+      return { ...sheep, x, scatterUntil: null, scatterDirection: 0 };
+    }),
+    settledSince: null,
+  };
+}
+
+function updateCabinGame(dt) {
+  game.elapsed += dt;
+  game.timeLeft = game.duration - game.elapsed;
+  game.barkCooldown = Math.max(0, game.barkCooldown - dt);
+  game.shake = Math.max(0, game.shake - dt);
+  game.moving = Math.max(0, game.moving - dt * 2.8);
+  const travel = 1 - Math.pow(0.0009, dt);
+  game.charlieX += (game.targetX - game.charlieX) * travel;
+  game.charlieY += (game.targetY - game.charlieY) * travel;
+  if (!settings.motion) {
+    game.charlieX = game.targetX;
+    game.charlieY = game.targetY;
+  }
+
+  if (game.timeLeft <= 0) {
+    game.timeLeft = 0;
+    const requiredMarks = game.run.travelAssignment?.settledMarkTarget ?? 3;
+    const success = game.safety > 0 && (game.flockStatus?.settleMarks ?? 0) >= requiredMarks;
+    endGame(success ? "complete" : "flock", success);
+    return;
+  }
+
+  if (!game.cabinTutorialShown && game.elapsed >= 0.65) {
+    game.cabinTutorialShown = true;
+    showToast("Stand beside sheep to guide them → shaded grass", "bonus");
+    announce("Herding lesson. Move Charlie beside the sheep and let her presence push them toward the shaded grass on the right. Ordinary sheep do not need barking.");
+  }
+
+  const beforeMarks = game.flockStatus?.settleMarks ?? 0;
+  game.flock = updateFlock(game.flock, {
+    dt,
+    now: game.elapsed,
+    charlieX: cabinNormalizedX(game.charlieX),
+    charlieLane: game.flockActive && game.charlieLane === "lower" ? "sheep" : "upper",
+    focusBoost: game.superUntil > game.elapsed,
+  });
+  game.flockStatus = getFlockStatus(game.flock);
+  game.patience = flockOrderPercent(game.flockStatus);
+  game.bestFlockSize = Math.max(game.bestFlockSize, game.flockStatus.settledCount);
+  if (game.flockStatus.settleMarks > beforeMarks) {
+    const earnedMarks = game.flockStatus.settleMarks - beforeMarks;
+    game.flockSettled = game.flockStatus.settleMarks;
+    game.score += earnedMarks * 450;
+    game.chicken = Math.min(game.chickenGoal, game.chicken + earnedMarks);
+    game.combo = Math.min(5, game.combo + earnedMarks);
+    game.bestCombo = Math.max(game.bestCombo, game.combo);
+    setPetReaction("waving");
+    playSuccess();
+    addEffect("burst", cabinCanvasX(0.825), 623, { color: "#e6ad3c", text: `FLOCK ${game.flockStatus.settleMarks}/3`, life: 1.25 });
+    showToast(`Flock Settled ${game.flockStatus.settleMarks}/3 · +${earnedMarks * 450}`, "good");
+    announce(`Flock Settled mark ${game.flockStatus.settleMarks} of 3 earned. The sheep have found a newly urgent patch of grass.`);
+    game.flock = loosenFlockAfterMark(game.flock);
+    game.flockStatus = getFlockStatus(game.flock);
+  }
+
+  if (game.petReaction && game.elapsed >= game.petReaction.until) game.petReaction = null;
+  if (game.lookTarget && game.elapsed >= game.lookTarget.until) game.lookTarget = null;
+
+  processDirector();
+  for (const entity of [...game.entities]) {
+    entity.progress += entity.speed * dt;
+    if (entity.progress >= 1) {
+      missVisitor(entity);
+      if (game.ended) return;
+    }
+  }
+
+  for (const effect of game.effects) effect.life -= dt;
+  game.effects = game.effects.filter((effect) => effect.life > 0);
+  syncHUD();
+}
+
 function updateGame(dt) {
   if (!game || game.ended || screen !== "playing") return;
+  if (isCabinRun()) {
+    updateCabinGame(dt);
+    return;
+  }
   game.elapsed += dt;
   game.timeLeft = Number.isFinite(game.duration) ? game.duration - game.elapsed : Number.POSITIVE_INFINITY;
   game.barkCooldown = Math.max(0, game.barkCooldown - dt);
@@ -1993,6 +2374,10 @@ function updateGame(dt) {
 
 function displayedRecord(active) {
   const liveScore = Math.max(0, Math.round(active.score));
+  if (active.run.mode === "travel") {
+    const stored = profile.lifetime.byMode.travel?.bestScore ?? 0;
+    return { label: "Travel best", value: Math.max(stored, liveScore).toLocaleString() };
+  }
   if (active.run.mode === "daily") {
     const stored = profile.daily.bestByDate[active.run.daily?.dateKey] ?? 0;
     return { label: "Best today", value: Math.max(stored, liveScore).toLocaleString() };
@@ -2016,31 +2401,43 @@ function syncHUD() {
   const active = game ?? newGame();
   const phaseNames = ["Morning mail", "Lunch rush", "Golden window"];
   ui.time.textContent = Number.isFinite(active.timeLeft) ? formatTime(active.timeLeft) : `OT ${formatTime(active.elapsed)}`;
-  const phaseName = active.run.mode === "endless"
+  const phaseName = active.run.mode === "travel"
+    ? active.elapsed < 16 ? "Learn the flock" : active.elapsed < 72 ? "Cabin patrol" : "Two-fence finale"
+    : active.run.mode === "endless"
     ? `Overtime ${Math.floor(active.elapsed / 30) + 1}`
     : phaseNames[phaseIndex()] ?? phaseNames[0];
   ui.phase.textContent = active.relaxed ? `${phaseName} · relaxed` : phaseName;
   ui.currentPatrolLabel.textContent = active.run.mode === "campaign"
     ? `Case ${String(active.run.patrol.number).padStart(2, "0")} · ${active.run.patrol.shortTitle}`
-    : active.run.mode === "daily" ? "Today's patrol" : active.run.mode === "endless" ? "Overtime Watch" : "Classic patrol";
+    : active.run.mode === "travel" ? "Travel File · Czech Cabin Duty" : active.run.mode === "daily" ? "Today's patrol" : active.run.mode === "endless" ? "Overtime Watch" : "Classic patrol";
   ui.activeObjective.textContent = active.run.mode === "campaign"
     ? active.run.patrol.objectives.map((objective) => objective.label).join(" · ")
-    : active.run.mode === "daily" ? `${active.run.daily.twist.label}: secure today's seeded route.` : active.run.mode === "endless" ? "Stay on watch for as long as possible." : "Keep the flat safe until the watch ends.";
+    : active.run.mode === "travel" ? `Settle the flock ${active.flockStatus?.settleMarks ?? 0}/3 · Keep the upper fence secure.` : active.run.mode === "daily" ? `${active.run.daily.twist.label}: secure today's seeded route.` : active.run.mode === "endless" ? "Stay on watch for as long as possible." : "Keep the flat safe until the watch ends.";
   ui.score.textContent = Math.max(0, Math.round(active.score)).toLocaleString();
   const record = displayedRecord(active);
   ui.bestLabel.textContent = record.label;
   ui.best.textContent = record.value;
-  ui.combo.textContent = `×${active.combo}`;
+  const comboLabel = ui.combo?.closest(".combo-badge")?.querySelector("span");
+  if (comboLabel) comboLabel.textContent = active.run.mode === "travel" ? "Settled" : "Streak";
+  ui.combo.textContent = active.run.mode === "travel" ? `${active.flockStatus?.settleMarks ?? 0}/3` : `×${active.combo}`;
   const safetyPercent = Math.round((active.safety / 3) * 100);
-  const patiencePercent = Math.round(active.patience);
+  const patiencePercent = active.run.mode === "travel" ? flockOrderPercent(active.flockStatus) : Math.round(active.patience);
   const chickenPercent = Math.round((active.chicken / active.chickenGoal) * 100);
   ui.safety.textContent = `${safetyPercent}%`;
   ui.patience.textContent = `${patiencePercent}%`;
+  ui.safetyLabel.innerHTML = active.run.mode === "travel"
+    ? '<span class="meter-symbol meter-symbol--shield" aria-hidden="true">◆</span> Cabin safety'
+    : '<span class="meter-symbol meter-symbol--shield" aria-hidden="true">◆</span> Safety';
+  ui.patienceLabel.innerHTML = active.run.mode === "travel"
+    ? '<span class="meter-symbol" aria-hidden="true">●</span> Flock order'
+    : '<span class="meter-symbol" aria-hidden="true">●</span> Patience';
   ui.chickenValue.textContent = `${chickenPercent}%`;
   ui.chickenFill.style.width = `${chickenPercent}%`;
   ui.safetyMeter?.setAttribute("aria-valuenow", String(safetyPercent));
   ui.patienceMeter?.setAttribute("aria-valuenow", String(patiencePercent));
-  ui.patienceMeter?.setAttribute("aria-valuetext", `${patiencePercent} percent owner patience remaining`);
+  ui.patienceMeter?.setAttribute("aria-valuetext", active.run.mode === "travel"
+    ? `${active.flockStatus?.settledCount ?? 0} of ${active.flockStatus?.total ?? 6} sheep in the shaded gathering patch; ${active.flockStatus?.settleMarks ?? 0} of 3 Flock Settled marks earned`
+    : `${patiencePercent} percent owner patience remaining`);
   ui.chickenMeter?.setAttribute("aria-valuenow", String(chickenPercent));
   const safeFill = ui.safetyMeter?.querySelector(".meter-fill");
   const patienceFill = ui.patienceMeter?.querySelector(".meter-fill");
@@ -2056,17 +2453,36 @@ function syncHUD() {
       .map((entity) => {
         const marker = entity.friendly ? "○" : "△";
         const detail = entity.friendly ? "friendly" : `${entity.hp} bark${entity.hp === 1 ? "" : "s"}${entity.boss ? ", boss" : ""}`;
-        return `${marker} ${entity.label} at ${WINDOWS[entity.windowId].label} (${detail})`;
+        return `${marker} ${entity.label} at ${targetLabel(entity.windowId)} (${detail})`;
       });
-    ui.threatRoster.innerHTML = `<strong>Watching:</strong> ${currentWindow().label}${visitors.length ? ` <span aria-hidden="true">•</span> ${visitors.join(" · ")}` : " <span aria-hidden=\"true\">•</span> No visitors outside."}`;
+    const watching = active.run.mode === "travel"
+      ? `${active.charlieLane === "upper" ? targetLabel(active.selectedWindow) : `sheep-fence position ${active.selectedWindow + 1}`} · Flock ${active.flockStatus?.settledCount ?? 0}/${active.flockStatus?.total ?? 6} in patch · Marks ${active.flockStatus?.settleMarks ?? 0}/3`
+      : currentWindow().label;
+    ui.threatRoster.innerHTML = `<strong>Watching:</strong> ${watching}${visitors.length ? ` <span aria-hidden="true">•</span> ${visitors.join(" · ")}` : " <span aria-hidden=\"true\">•</span> No visitors outside."}`;
   }
 
 }
 
 function updateRoomUI() {
   if (!game) return;
+  const cabin = isCabinRun();
+  document.body.dataset.arena = cabin ? "cabin" : "flat";
+  if (ui.switchFenceButton) {
+    ui.switchFenceButton.hidden = !cabin;
+    const destination = game.charlieLane === "upper" ? "lower sheep fence" : "upper visitor fence";
+    const arrow = game.charlieLane === "upper" ? "↓" : "↑";
+    ui.switchFenceButton.innerHTML = `Switch to ${game.charlieLane === "upper" ? "lower" : "upper"} fence <span aria-hidden="true">${arrow}</span>`;
+    ui.switchFenceButton.setAttribute("aria-label", `Switch to ${destination}`);
+  }
+  ui.prevWindow.setAttribute("aria-label", cabin ? "Move left along the current fence" : "Previous window across the flat");
+  ui.nextWindow.setAttribute("aria-label", cabin ? "Move right along the current fence" : "Next window across the flat");
+  ui.barkButton.setAttribute("aria-label", cabin && game.charlieLane === "lower" ? "Bark at nearby sheep" : "Bark");
+  canvas.setAttribute("aria-label", cabin
+    ? "A quiet Czech cabin yard between two fences. Defend the upper fence and guide six sheep into the shaded patch below."
+    : "The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by.");
   canvasWrap.dataset.room = ROOMS[game.selectedRoom].id;
   canvasWrap.dataset.window = String(game.selectedWindow);
+  canvasWrap.dataset.lane = cabin ? game.charlieLane : "indoors";
   syncCanvasCamera();
 }
 
@@ -2093,6 +2509,315 @@ function label(text, x, y, options = {}) {
 
 function hasReward(rewardId) {
   return profile.unlocks.rewardIds.includes(rewardId);
+}
+
+function drawCabinFence(y, selectedLane) {
+  ctx.save();
+  ctx.fillStyle = "#7b5536";
+  ctx.strokeStyle = "#4e3929";
+  ctx.lineWidth = 3;
+  for (let x = 18; x <= WIDTH; x += 92) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 30);
+    ctx.lineTo(x + 8, y - 43);
+    ctx.lineTo(x + 16, y - 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(x, y - 30, 16, 65);
+    ctx.strokeRect(x, y - 30, 16, 65);
+  }
+  for (const offset of [-13, 15]) {
+    ctx.fillStyle = offset < 0 ? "#936b43" : "#765032";
+    ctx.fillRect(0, y + offset, WIDTH, 13);
+    ctx.strokeRect(0, y + offset, WIDTH, 13);
+  }
+  if (selectedLane) {
+    const target = CABIN_SECTORS[game?.selectedWindow ?? 2];
+    const glow = settings.motion ? 0.55 + Math.sin((game?.elapsed ?? 0) * 6) * 0.12 : 0.58;
+    ctx.strokeStyle = `rgba(244,199,94,${glow})`;
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(target.x - 72, y - 39);
+    ctx.lineTo(target.x + 72, y - 39);
+    ctx.stroke();
+    ctx.fillStyle = "#f4c75e";
+    ctx.beginPath();
+    ctx.arc(target.x, y - 43, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCabinShell() {
+  const sky = ctx.createLinearGradient(0, 0, 0, 230);
+  sky.addColorStop(0, "#8fbcb6");
+  sky.addColorStop(1, "#dce7cc");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WIDTH, 230);
+
+  ctx.fillStyle = "rgba(255,248,218,.82)";
+  ctx.beginPath();
+  ctx.arc(1080, 55, 34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#789c72";
+  ctx.beginPath();
+  ctx.moveTo(0, 134);
+  ctx.quadraticCurveTo(155, 28, 334, 137);
+  ctx.quadraticCurveTo(520, 52, 704, 139);
+  ctx.quadraticCurveTo(935, 34, WIDTH, 139);
+  ctx.lineTo(WIDTH, 218);
+  ctx.lineTo(0, 218);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#52765f";
+  for (let x = 15; x < WIDTH; x += 47) {
+    const height = 35 + ((x * 17) % 42);
+    ctx.beginPath();
+    ctx.moveTo(x, 173);
+    ctx.lineTo(x + 15, 173 - height);
+    ctx.lineTo(x + 30, 173);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#9eb879";
+  ctx.fillRect(0, 145, WIDTH, CABIN_FENCE_Y.upper - 145);
+  const yard = ctx.createLinearGradient(0, 190, 0, CABIN_FENCE_Y.lower);
+  yard.addColorStop(0, "#b7c987");
+  yard.addColorStop(1, "#8eaf6f");
+  ctx.fillStyle = yard;
+  ctx.fillRect(0, CABIN_FENCE_Y.upper + 25, WIDTH, CABIN_FENCE_Y.lower - CABIN_FENCE_Y.upper - 48);
+  ctx.fillStyle = "#779b60";
+  ctx.fillRect(0, CABIN_FENCE_Y.lower + 20, WIDTH, HEIGHT - CABIN_FENCE_Y.lower - 20);
+
+  // The rented cabin sits quietly behind Charlie's patrol route.
+  ctx.save();
+  ctx.translate(86, 232);
+  ctx.fillStyle = "#714b31";
+  roundedRect(0, 54, 250, 154, 7);
+  ctx.fill();
+  ctx.fillStyle = "#4d3428";
+  ctx.beginPath();
+  ctx.moveTo(-18, 70);
+  ctx.lineTo(125, -5);
+  ctx.lineTo(268, 70);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#a87345";
+  for (let y = 72; y < 198; y += 24) ctx.fillRect(8, y, 234, 6);
+  ctx.fillStyle = "#456b65";
+  ctx.fillRect(36, 92, 58, 52);
+  ctx.fillRect(164, 92, 58, 52);
+  ctx.fillStyle = "#e7d6ae";
+  ctx.fillRect(43, 99, 44, 38);
+  ctx.fillRect(171, 99, 44, 38);
+  ctx.fillStyle = "#3e3027";
+  roundedRect(105, 106, 48, 102, 4);
+  ctx.fill();
+  label("CABIN", 129, 181, { size: 10, color: "#f5ecda", align: "center" });
+  ctx.restore();
+
+  // A stone path makes the two-fence commute readable.
+  ctx.fillStyle = "rgba(239,226,190,.48)";
+  for (let y = 350; y < 535; y += 38) {
+    const width = 44 + (y - 350) * 0.25;
+    roundedRect(630 - width / 2 + Math.sin(y) * 7, y, width, 22, 9);
+    ctx.fill();
+  }
+
+  const zoneLeft = cabinCanvasX(game?.flock?.config?.settledZone?.min ?? 0.72);
+  const zoneRight = cabinCanvasX(game?.flock?.config?.settledZone?.max ?? 0.93);
+  ctx.fillStyle = "rgba(54,105,73,.46)";
+  roundedRect(zoneLeft, 579, zoneRight - zoneLeft, 122, 22);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(246,231,178,.88)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([9, 8]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  label("SHADED GRAZING PATCH", (zoneLeft + zoneRight) / 2, 600, { size: 11, color: "#f8efd4", align: "center" });
+  ctx.fillStyle = "rgba(244,199,94,.72)";
+  for (let x = zoneLeft + 20; x < zoneRight - 10; x += 28) {
+    ctx.fillRect(x, 676 - ((x * 7) % 18), 3, 17);
+    ctx.beginPath();
+    ctx.arc(x + 2, 674 - ((x * 7) % 18), 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  drawCabinFence(CABIN_FENCE_Y.upper, game?.charlieLane === "upper");
+  drawCabinFence(CABIN_FENCE_Y.lower, game?.charlieLane === "lower");
+  label("UPPER FENCE · VISITORS", 28, 222, { size: 12, color: "rgba(36,41,39,.72)" });
+  label("LOWER FENCE · SHEEP", 28, 596, { size: 12, color: "#f7eedc" });
+}
+
+function drawCabinVisitor(entity) {
+  const sector = CABIN_SECTORS[entity.windowId];
+  const y = 26 + entity.progress * 112;
+  ctx.save();
+  ctx.translate(sector.x, y);
+  ctx.scale(0.78, 0.78);
+  drawApproachArt(entity);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(sector.x, Math.min(150, y + 45));
+  ctx.fillStyle = "rgba(255,250,240,.94)";
+  ctx.strokeStyle = entity.friendly ? "#277c76" : "#b84d37";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  if (entity.friendly) ctx.arc(0, 0, 10, 0, Math.PI * 2);
+  else {
+    ctx.moveTo(0, -12);
+    ctx.lineTo(12, 9);
+    ctx.lineTo(-12, 9);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function sheepBob(sheep) {
+  if (!settings.motion) return 0;
+  const phase = [...sheep.id].reduce((sum, character) => sum + character.codePointAt(0), 0) * 0.13;
+  return Math.sin((game?.elapsed ?? 0) * 2.2 + phase) * 2.2;
+}
+
+function drawCabinSheep(sheep, index) {
+  const x = cabinCanvasX(sheep.x);
+  const y = 638 + (index % 2) * 26 + sheepBob(sheep);
+  const recentlyBarked = sheep.lastBarkedAt != null && (game?.elapsed ?? 0) - sheep.lastBarkedAt < 0.95;
+  const scattering = sheep.scatterUntil != null && (game?.elapsed ?? 0) < sheep.scatterUntil;
+  const compliant = sheep.stubborn && sheep.complianceUntil != null && (game?.elapsed ?? 0) < sheep.complianceUntil;
+  const facing = sheep.x < (game?.flockStatus?.centroid ?? 0.5) ? 1 : -1;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(facing, 1);
+  ctx.fillStyle = "rgba(36,41,39,.2)";
+  ctx.beginPath();
+  ctx.ellipse(0, 31, 36, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#4f493f";
+  ctx.lineWidth = 4;
+  for (const legX of [-20, 15]) {
+    ctx.beginPath();
+    ctx.moveTo(legX, 17);
+    ctx.lineTo(legX + (scattering ? -5 : 0), 37);
+    ctx.stroke();
+  }
+  ctx.fillStyle = sheep.stubborn ? "#efe0c1" : "#f7edd6";
+  ctx.strokeStyle = sheep.stubborn ? "#6c4b37" : "#776b5c";
+  ctx.lineWidth = 2.5;
+  for (const [woolX, woolY, radius] of [[-24, 0, 22], [-7, -9, 25], [14, -6, 24], [27, 5, 20], [2, 10, 27]]) {
+    ctx.beginPath();
+    ctx.arc(woolX, woolY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = sheep.stubborn ? "#584334" : "#756650";
+  ctx.beginPath();
+  ctx.ellipse(42, 1, 18, 22, -0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(31, -15); ctx.lineTo(20, -27); ctx.lineTo(39, -20); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(49, -17); ctx.lineTo(61, -28); ctx.lineTo(57, -9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#fffaf0";
+  ctx.beginPath(); ctx.arc(48, -4, 3.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#242927";
+  ctx.beginPath(); ctx.arc(49.5, -4, 1.7, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#242927";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(55, 8);
+  ctx.quadraticCurveTo(61, recentlyBarked && sheep.stubborn ? 6 : 12, 65, 8);
+  ctx.stroke();
+  const tagColors = { red: "#c64e3d", yellow: "#e6ad3c", green: "#3e8b6f", blue: "#467ea3", orange: "#d77c42", white: "#e8e2d5" };
+  ctx.fillStyle = tagColors[sheep.earTag] ?? "#e6ad3c";
+  roundedRect(54, -26, sheep.stubborn ? 13 : 10, sheep.stubborn ? 16 : 12, 3);
+  ctx.fill();
+  ctx.restore();
+
+  if (recentlyBarked) {
+    label(sheep.stubborn ? (compliant ? "FINE." : "?") : "…MUNCH", x, y - 43, {
+      size: sheep.stubborn ? 13 : 11,
+      color: sheep.stubborn ? "#703d38" : "#f7eedc",
+      align: "center",
+    });
+  }
+  if (scattering) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,250,240,.8)";
+    ctx.lineWidth = 2;
+    for (let line = 0; line < 3; line += 1) {
+      ctx.beginPath();
+      ctx.moveTo(x - 48 - line * 8, y - 4 + line * 9);
+      ctx.lineTo(x - 65 - line * 8, y - 4 + line * 9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawCabinFlock() {
+  if (!game?.flock) return;
+  game.flock.sheep.forEach(drawCabinSheep);
+  if (game.charlieLane === "lower") {
+    const radius = game.superUntil > game.elapsed ? 185 : 130;
+    ctx.save();
+    const pressure = ctx.createRadialGradient(game.charlieX, CABIN_FENCE_Y.lower + 12, 15, game.charlieX, CABIN_FENCE_Y.lower + 12, radius);
+    pressure.addColorStop(0, "rgba(230,173,60,.24)");
+    pressure.addColorStop(1, "rgba(230,173,60,0)");
+    ctx.fillStyle = pressure;
+    ctx.beginPath();
+    ctx.arc(game.charlieX, CABIN_FENCE_Y.lower + 12, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCabinStatus() {
+  if (!game?.flockStatus) return;
+  const status = game.flockStatus;
+  ctx.save();
+  const selectedX = CABIN_SECTORS[game.selectedWindow]?.x ?? WIDTH / 2;
+  const x = clamp(selectedX - 107, 24, WIDTH - 238);
+  const y = 222;
+  label("FLOCK REPORT", x, y, { size: 11, color: "rgba(36,41,39,.68)" });
+  for (let index = 0; index < status.maxSettleMarks; index += 1) {
+    ctx.fillStyle = index < status.settleMarks ? "#e6ad3c" : "rgba(255,250,240,.56)";
+    ctx.strokeStyle = "rgba(64,59,48,.62)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 18 + index * 30, y + 20, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  label(`${status.settledCount}/${status.total} in patch`, x + 118, y + 25, { size: 12, color: "#39413e" });
+  if (status.settleProgress > 0) {
+    ctx.fillStyle = "rgba(255,250,240,.55)";
+    roundedRect(x, y + 39, 214, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = "#e6ad3c";
+    roundedRect(x, y + 39, 214 * status.settleProgress, 8, 4);
+    ctx.fill();
+  }
+  const otherVisitors = game.entities.filter((entity) => entity.windowId !== game.selectedWindow);
+  const leftThreats = otherVisitors.filter((entity) => entity.windowId < game.selectedWindow && !entity.friendly).length;
+  const rightThreats = otherVisitors.filter((entity) => entity.windowId > game.selectedWindow && !entity.friendly).length;
+  if (leftThreats || rightThreats) {
+    const compassY = y + 66;
+    if (leftThreats) label(`◀ ${leftThreats} upper-fence alert${leftThreats === 1 ? "" : "s"}`, x, compassY, { size: 11, color: "#8d3f32" });
+    if (rightThreats) label(`${rightThreats} upper-fence alert${rightThreats === 1 ? "" : "s"} ▶`, x + 214, compassY, { size: 11, color: "#8d3f32", align: "right" });
+  }
+  const zoneLeft = cabinCanvasX(game.flock.config.settledZone.min);
+  const zoneRight = cabinCanvasX(game.flock.config.settledZone.max);
+  if (selectedX < zoneLeft - 80) {
+    label("SHADED PATCH ▶", x + 214, y + 47, { size: 10, color: "#2f6e57", align: "right" });
+  } else if (selectedX > zoneRight + 80) {
+    label("◀ SHADED PATCH", x, y + 47, { size: 10, color: "#2f6e57" });
+  }
+  ctx.restore();
 }
 
 function drawWindow(windowItem, selected) {
@@ -2708,7 +3433,7 @@ function drawCharlie() {
   const barking = game.barkUntil > game.elapsed;
   const superMode = game.superUntil > game.elapsed;
   const chickenReady = isImmersiveMode() && game.chicken >= game.chickenGoal;
-  const sneakyReady = Boolean(game.sneaky
+  const sneakyReady = Boolean(game.sneaky && !isCabinRun()
     && game.sneaky.until > game.elapsed
     && game.sneaky.room === game.selectedRoom);
   canvasWrap.dataset.sneaky = sneakyReady ? "ready" : "idle";
@@ -2718,15 +3443,15 @@ function drawCharlie() {
   canvasWrap.dataset.petFrame = `${pose.row}:${pose.column}`;
   canvasWrap.dataset.petSource = pose.source;
   const x = game.charlieX;
-  const groundY = 586;
-  const spriteWidth = 184;
+  const groundY = isCabinRun() ? game.charlieY : 586;
+  const spriteWidth = isCabinRun() ? 150 : 184;
   const spriteHeight = spriteWidth * (PET_CELL_HEIGHT / PET_CELL_WIDTH);
   const y = groundY - spriteHeight / 2;
   ctx.save();
   ctx.globalAlpha = 0.22;
   ctx.fillStyle = "#242927";
   ctx.beginPath();
-  ctx.ellipse(x, groundY - 6, 66, 15, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, groundY - 6, isCabinRun() ? 54 : 66, isCabinRun() ? 12 : 15, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
@@ -2811,19 +3536,22 @@ function drawCharlie() {
     drawFallbackDog(x, y, game.facing, barking);
   }
 
-  const windowItem = currentWindow();
+  const windowItem = currentTarget();
+  const aimY = isCabinRun()
+    ? game.charlieLane === "upper" ? CABIN_FENCE_Y.upper + 16 : CABIN_FENCE_Y.lower + 48
+    : 237;
   ctx.save();
   ctx.strokeStyle = superMode ? "#e6ad3c" : "rgba(36,41,39,.45)";
   ctx.lineWidth = 3;
   ctx.setLineDash([7, 7]);
   ctx.beginPath();
-  ctx.moveTo(x, groundY - 132);
-  ctx.lineTo(windowItem.x, 237);
+  ctx.moveTo(x, groundY - (isCabinRun() ? 104 : 132));
+  ctx.lineTo(windowItem.x, aimY);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle = superMode ? "#e6ad3c" : "#242927";
   ctx.beginPath();
-  ctx.arc(windowItem.x, 238, 7, 0, Math.PI * 2);
+  ctx.arc(windowItem.x, aimY, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -2994,13 +3722,22 @@ function render() {
   const shakeY = game?.shake > 0 && settings.motion ? (Math.random() - 0.5) * 6 : 0;
   ctx.translate(shakeX, shakeY);
   ctx.clearRect(-12, -12, WIDTH + 24, HEIGHT + 24);
-  drawRoomShell();
+  if (isCabinRun()) drawCabinShell();
+  else drawRoomShell();
   if (game) {
-    game.entities.forEach(drawVisitor);
+    if (isCabinRun()) {
+      game.entities.forEach(drawCabinVisitor);
+      drawCabinFlock();
+    } else {
+      game.entities.forEach(drawVisitor);
+    }
     drawCharlie();
     drawEffects();
-    drawListeningState();
-    drawBossState();
+    if (isCabinRun()) drawCabinStatus();
+    else {
+      drawListeningState();
+      drawBossState();
+    }
     if (game.superUntil > game.elapsed && !isDeclutteredRendering()) {
       const remaining = Math.max(0, game.superUntil - game.elapsed).toFixed(1);
       ctx.fillStyle = "rgba(36,41,39,.9)";
@@ -3009,7 +3746,7 @@ function render() {
       label(`CHICKEN FOCUS  ${remaining}s`, 1142, 675, { size: 15, color: "#f4c75e", align: "center" });
     }
   }
-  drawLegend();
+  if (!isCabinRun()) drawLegend();
   ctx.restore();
   drawResultPet();
 }
@@ -3040,7 +3777,7 @@ function renderedCanvasCameraFactor() {
 }
 
 function syncCanvasCamera() {
-  if (!isImmersiveMode() || !game) {
+  if ((!isImmersiveMode() && !isCabinRun()) || !game) {
     canvasWrap.style.removeProperty("--camera-x");
     delete canvasWrap.dataset.cameraFactor;
     return;
@@ -3059,7 +3796,7 @@ function canvasPoint(event) {
   const visibleHeight = HEIGHT * scale;
   const immersiveCamera = renderedCanvasCameraFactor();
   const roomPosition = objectFit === "cover"
-    ? isImmersiveMode() ? immersiveCamera : [0, 0.5, 1][game?.selectedRoom ?? 1]
+    ? isCabinRun() ? immersiveCamera : isImmersiveMode() ? immersiveCamera : [0, 0.5, 1][game?.selectedRoom ?? 1]
     : 0.5;
   const offsetX = (rect.width - visibleWidth) * roomPosition;
   const offsetY = (rect.height - visibleHeight) / 2;
@@ -3070,17 +3807,25 @@ function canvasPoint(event) {
 }
 
 function nearestWindowAtPoint(point) {
-  if (point.y > 285) return null;
-  const nearest = WINDOWS.reduce(
+  if (!isCabinRun() && point.y > 285) return null;
+  const targets = activeSectors();
+  const nearest = targets.reduce(
     (best, item) => Math.abs(item.x - point.x) < Math.abs(best.x - point.x) ? item : best,
-    WINDOWS[0],
+    targets[0],
   );
-  return Math.abs(nearest.x - point.x) <= nearest.width * 0.78 ? nearest : null;
+  return isCabinRun() || Math.abs(nearest.x - point.x) <= nearest.width * 0.78 ? nearest : null;
 }
 
 function handleCanvasSelection(event) {
   if (screen !== "playing" || !game) return;
   const point = canvasPoint(event);
+  if (isCabinRun()) {
+    const lane = point.y < HEIGHT * 0.5 ? "upper" : "lower";
+    switchFence(lane);
+    const target = nearestWindowAtPoint(point);
+    if (target) selectWindow(target.id, false);
+    return;
+  }
   const targetWindow = nearestWindowAtPoint(point);
   if (targetWindow) {
     selectWindow(targetWindow.id);
@@ -3099,6 +3844,15 @@ function handleImmersiveTap(event) {
     useChicken();
     return;
   }
+  if (isCabinRun()) {
+    const lane = point.y < HEIGHT * 0.5 ? "upper" : "lower";
+    switchFence(lane);
+    const target = nearestWindowAtPoint(point);
+    if (!target) return;
+    selectWindow(target.id, false);
+    if (lane === "upper") bark();
+    return;
+  }
   const targetWindow = nearestWindowAtPoint(point);
   if (!targetWindow) return;
   selectWindow(targetWindow.id, false);
@@ -3107,6 +3861,7 @@ function handleImmersiveTap(event) {
 
 function changeFlatWindow(delta) {
   if (!game || screen !== "playing") return;
+  if (isCabinRun() && game.charlieLane === "lower") game.flockActive = true;
   const next = clamp(game.selectedWindow + delta, 0, WINDOWS.length - 1);
   if (next === game.selectedWindow) {
     syncCanvasCamera();
@@ -3192,8 +3947,13 @@ function onCanvasPointerUp(event) {
   gesture.maxMovement = Math.max(gesture.maxMovement, movement);
   const swipeThreshold = Math.min(72, Math.max(42, canvas.getBoundingClientRect().width * 0.1));
   const horizontalSwipe = Math.abs(dx) >= swipeThreshold && Math.abs(dx) > Math.abs(dy) * 1.2;
+  const verticalSwipe = isCabinRun()
+    && Math.abs(dy) >= swipeThreshold
+    && Math.abs(dy) > Math.abs(dx) * 1.2;
   const otherThumbIsPanning = activeDragPointer !== null && activeDragPointer !== event.pointerId;
-  if (horizontalSwipe) {
+  if (verticalSwipe) {
+    switchFence(dy < 0 ? "upper" : "lower");
+  } else if (horizontalSwipe) {
     changeFlatWindow(dx < 0 ? 1 : -1);
   } else if (!gesture.dragged && gesture.maxMovement <= 14) {
     handleImmersiveTap(event);
@@ -3273,11 +4033,14 @@ function onKeyDown(event) {
     return;
   }
   const handled = ["ArrowLeft", "ArrowRight", "Space", "KeyC", "KeyP", "Escape"];
+  if (isCabinRun()) handled.push("ArrowUp", "ArrowDown");
   if (!handled.includes(code)) return;
   event.preventDefault();
   if (event.repeat && ["Space", "KeyC", "KeyP", "Escape"].includes(code)) return;
   if (code === "ArrowLeft") changeFlatWindow(-1);
   else if (code === "ArrowRight") changeFlatWindow(1);
+  else if (code === "ArrowUp") switchFence("upper");
+  else if (code === "ArrowDown") switchFence("lower");
   else if (code === "Space") bark();
   else if (code === "KeyC") useChicken();
   else if (["KeyP", "Escape"].includes(code)) pauseGame();
@@ -3308,6 +4071,7 @@ function toggleMotion() {
     game.shake = 0;
     game.moving = 0;
     game.charlieX = game.targetX;
+    game.charlieY = game.targetY ?? game.charlieY;
     game.effects = [];
   }
   syncSettings();
@@ -3324,6 +4088,7 @@ function toggleRelaxed() {
 function bindEvents() {
   ui.campaignButton.addEventListener("click", () => openPatrolBriefing({ mode: "campaign", patrolId: pendingRun.patrolId, returnTo: "title" }));
   ui.startButton.addEventListener("click", () => openPatrolBriefing({ mode: "classic", patrolId: PATROLS[0].id, returnTo: "title" }));
+  ui.travelButton.addEventListener("click", () => openPatrolBriefing({ mode: "travel", travelAssignmentId: DEFAULT_TRAVEL_ASSIGNMENT_ID, returnTo: "title" }));
   ui.dailyButton.addEventListener("click", () => {
     if (isModeUnlocked(profile, "daily")) openPatrolBriefing({ mode: "daily", returnTo: "title" });
   });
@@ -3339,6 +4104,7 @@ function bindEvents() {
     openPatrolBriefing({
       mode: ui.nextPatrolButton.dataset.nextMode ?? "campaign",
       patrolId: ui.nextPatrolButton.dataset.nextPatrolId ?? pendingRun.patrolId,
+      travelAssignmentId: ui.nextPatrolButton.dataset.travelAssignmentId ?? null,
       returnTo: "book",
     });
   });
@@ -3382,6 +4148,10 @@ function bindEvents() {
   });
   ui.nextWindow.addEventListener("click", (event) => {
     changeFlatWindow(1);
+    restoreCanvasFocusAfterPointer(event);
+  });
+  ui.switchFenceButton.addEventListener("click", (event) => {
+    switchFence();
     restoreCanvasFocusAfterPointer(event);
   });
   ui.barkButton.addEventListener("click", (event) => {
@@ -3431,6 +4201,8 @@ window.CharlieGuard = {
       run: {
         mode: game.run.mode,
         patrolId: game.run.patrolId,
+        travelAssignmentId: game.run.travelAssignmentId,
+        arena: game.run.arena,
         seed: game.run.seed,
         collarTagId: game.run.collarTag?.id ?? null,
       },
@@ -3442,6 +4214,13 @@ window.CharlieGuard = {
       chicken: game.chicken,
       selectedRoom: game.selectedRoom,
       selectedWindow: game.selectedWindow,
+      charlieLane: game.charlieLane,
+      charlieX: game.charlieX,
+      charlieY: game.charlieY,
+      flock: game.flock ? {
+        ...game.flockStatus,
+        sheep: game.flock.sheep.map((sheep) => ({ ...sheep })),
+      } : null,
       noise: game.rooms.map((room) => room.noise),
       attention: game.rooms.map((room) => room.attention),
       conditions: game.rooms.map((room, index) => ({
@@ -3469,6 +4248,9 @@ window.CharlieGuard = {
         perfectCrimes: game.perfectCrimes,
         violations: game.violations,
         bossDefeated: game.bossDefeated,
+        flockSettled: game.flockStatus?.settleMarks ?? game.flockSettled,
+        bestFlockSize: game.bestFlockSize,
+        sheepBarks: game.sheepBarks,
       },
     };
   },
@@ -3479,11 +4261,15 @@ window.CharlieGuard = {
   startMode(mode = "classic", patrolId = PATROLS[0].id, seed) {
     startRound({ mode, patrolId, seed, collarTagId: profile.selectedCollarTagId });
   },
+  startTravel(assignmentId = DEFAULT_TRAVEL_ASSIGNMENT_ID, seed = 0xc2ec4a) {
+    startRound({ mode: "travel", travelAssignmentId: assignmentId, seed, collarTagId: null });
+  },
   pause: pauseGame,
   resume: resumeGame,
   bark,
   moveRoom: setRoom,
   moveWindow: changeFlatWindow,
+  moveFence: switchFence,
   selectWindow,
   useChicken,
   spawnThreat(windowId = game?.selectedWindow ?? 2, hp = 1, type = "squirrel") {

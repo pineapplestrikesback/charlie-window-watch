@@ -4784,7 +4784,7 @@ body[data-screen="paused"] .pause-settings .switch-state {
   body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .game-panel {
     height: 100dvh;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 2.8rem minmax(0, 1fr) 3rem;
+    grid-template-rows: 2.8rem minmax(0, 1fr) 3.7rem;
     grid-template-areas:
       "hud"
       "canvas"
@@ -4855,5 +4855,124 @@ body[data-screen="paused"] .pause-settings .switch-state {
 
   .pause-card {
     max-height: calc(100dvh - 0.5rem);
+  }
+}
+
+/* Czech Cabin Travel File -------------------------------------------------- */
+
+.title-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.title-action--travel {
+  color: var(--teal-dark);
+  background: #e7eddf;
+  border-style: dashed;
+}
+
+.title-action--travel:hover:not(:disabled) {
+  background: #dce8d3;
+  box-shadow: 0 3px 0 var(--teal-dark);
+}
+
+#switchFenceButton {
+  display: none;
+  grid-area: fence;
+}
+
+.fence-switch-button {
+  min-width: 0;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  color: var(--paper);
+  background: var(--teal-dark);
+  border: 2px solid var(--ink);
+  border-radius: 0.62rem;
+  box-shadow: none;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.fence-switch-button:hover:not(:disabled) {
+  background: var(--teal);
+}
+
+.fence-switch-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+body[data-arena="cabin"][data-screen="playing"] #switchFenceButton:not([hidden]) {
+  display: flex;
+}
+
+body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock {
+  grid-template-areas: "prev bark next fence chicken";
+  grid-template-columns: 3.05rem minmax(6.5rem, 9rem) 3.05rem minmax(6.75rem, 8.5rem) minmax(9.5rem, 12rem);
+}
+
+body[data-arena="cabin"][data-screen="playing"] .page-shell.is-immersive-mode #switchFenceButton:not([hidden]) {
+  position: fixed;
+  z-index: 2600;
+  top: max(0.45rem, env(safe-area-inset-top));
+  left: max(0.45rem, env(safe-area-inset-left));
+  display: flex !important;
+  width: auto;
+  min-width: 8.25rem;
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+  color: var(--paper);
+  background: rgba(22, 82, 79, 0.78);
+  border: 1px solid rgba(255, 250, 240, 0.72);
+  border-radius: 999px;
+  box-shadow: 0 2px 0 rgba(36, 41, 39, 0.52);
+}
+
+@media (max-width: 620px) {
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .game-panel {
+    grid-template-rows: 3.15rem minmax(0, 1fr) 6.15rem;
+  }
+
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock {
+    grid-template-areas:
+      "prev bark next chicken"
+      "fence fence fence chicken";
+    grid-template-columns: 2.8rem minmax(5.5rem, 7rem) 2.8rem minmax(8rem, 9.5rem);
+    grid-template-rows: repeat(2, minmax(2.75rem, 1fr));
+  }
+
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock .chicken-control {
+    height: 100%;
+  }
+}
+
+@media (max-width: 620px) and (orientation: portrait) {
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) #gameCanvas,
+  body[data-arena="cabin"][data-screen="paused"] .page-shell:not(.is-immersive-mode) #gameCanvas {
+    object-fit: cover;
+    object-position: var(--camera-x, 50%) 50%;
+    background: #6f935d;
+  }
+}
+
+@media (max-width: 350px) {
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock {
+    grid-template-columns: 2.8rem minmax(4.65rem, 1fr) 2.8rem 8rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 620px) {
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .game-panel {
+    grid-template-rows: 2.8rem minmax(0, 1fr) 3.7rem;
+  }
+
+  body[data-arena="cabin"][data-screen="playing"] .page-shell:not(.is-immersive-mode) .action-dock {
+    grid-template-areas: "prev bark next fence chicken";
+    grid-template-columns: 2.75rem minmax(5.5rem, 7rem) 2.75rem minmax(6.5rem, 8rem) minmax(8.5rem, 10rem);
+    grid-template-rows: 1fr;
   }
 }

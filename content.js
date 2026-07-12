@@ -16,6 +16,14 @@ export const MODE_CONFIGS = deepFreeze({
     progression: true,
     unlock: { type: "always" },
   },
+  travel: {
+    id: "travel",
+    label: "Charlie's Travel Files",
+    shortLabel: "Travel Files",
+    description: "One-off assignments from Charlie's fieldwork beyond the flat.",
+    progression: false,
+    unlock: { type: "always" },
+  },
   classic: {
     id: "classic",
     label: "Classic Patrol",
@@ -51,6 +59,44 @@ const objective = (id, label, description, rule) => ({
   requiresClear: true,
   rule,
 });
+
+export const DEFAULT_TRAVEL_ASSIGNMENT_ID = "czech-cabin-duty";
+
+export const TRAVEL_ASSIGNMENTS = deepFreeze([
+  {
+    id: DEFAULT_TRAVEL_ASSIGNMENT_ID,
+    title: "Czech Cabin Duty",
+    shortTitle: "Czech Cabin",
+    subtitle: "The Sheep Situation",
+    tagline: "Two fences. Six sheep. Zero respect for authority.",
+    briefing: "Defend the cabin's upper fence while guiding six unimpressed sheep into one grazing patch below. Position moves the flock; bark only when one refuses to cooperate.",
+    durationSeconds: 105,
+    arena: "cabin",
+    sheepCount: 6,
+    settledMarkTarget: 3,
+    featuredVisitors: ["squirrel", "pigeon", "robot", "pirate", "leaves"],
+    travelOrders: [
+      objective(
+        "cabin-duty-complete",
+        "Complete cabin duty",
+        "Juggle both fences until the assignment clock runs out.",
+        { type: "completed" },
+      ),
+      objective(
+        "cabin-flock-settled",
+        "Settle the flock",
+        "Earn three Flock Settled marks during one duty.",
+        { type: "metric", metric: "stats.flockSettled", operator: ">=", target: 3 },
+      ),
+      objective(
+        "cabin-top-fence-secure",
+        "Nothing past the top fence",
+        "Complete cabin duty without a top-fence miss.",
+        { type: "metric", metric: "stats.missed", operator: "<=", target: 0 },
+      ),
+    ],
+  },
+]);
 
 export const PATROLS = deepFreeze([
   {
@@ -406,11 +452,18 @@ export const REWARDS = deepFreeze([
 ]);
 
 const PATROL_BY_ID = new Map(PATROLS.map((patrol) => [patrol.id, patrol]));
+const TRAVEL_ASSIGNMENT_BY_ID = new Map(
+  TRAVEL_ASSIGNMENTS.map((assignment) => [assignment.id, assignment]),
+);
 const RANK_BY_ID = new Map(RANKS.map((rank) => [rank.id, rank]));
 const TAG_BY_ID = new Map(COLLAR_TAGS.map((tag) => [tag.id, tag]));
 
 export function getPatrol(patrolId) {
   return PATROL_BY_ID.get(patrolId) ?? null;
+}
+
+export function getTravelAssignment(assignmentId) {
+  return TRAVEL_ASSIGNMENT_BY_ID.get(assignmentId) ?? null;
 }
 
 export function getNextPatrol(patrolId) {

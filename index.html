@@ -8,8 +8,8 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Charlie: Window Watch</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=minimal-patrol-v3-3">
-    <script src="game.js?v=minimal-patrol-v3-3" type="module"></script>
+    <link rel="stylesheet" href="styles.css?v=czech-cabin-v1">
+    <script src="game.js?v=czech-cabin-v1" type="module"></script>
   </head>
 
   <body>
@@ -86,8 +86,8 @@
           </div>
 
           <div class="canvas-wrap">
-            <p id="gameInstructions" class="visually-hidden">Use Left and Right Arrow to patrol all six windows across the flat, Space to bark, and C to give Charlie chicken. In immersive full screen, swipe across the flat, tap a window to select it and bark, or tap Charlie when her chicken is ready.</p>
-            <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="ArrowLeft ArrowRight Space C">
+            <p id="gameInstructions" class="visually-hidden">Use Left and Right Arrow to patrol all six windows across the flat, Space to bark, and C to give Charlie chicken. In Czech Cabin Duty, use Up and Down Arrow or the Switch fence control to move between the upper visitor fence and lower sheep fence. In immersive full screen, swipe across the flat, tap a window to select it and bark, or tap Charlie when her chicken is ready.</p>
+            <canvas id="gameCanvas" width="1280" height="720" tabindex="0" role="img" aria-label="The flat seen room by room. Watch the windows and help Charlie bark at suspicious passers-by." aria-describedby="gameInstructions gameStateSummary" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Space C">
               Your browser needs canvas support to play Charlie: Window Watch.
             </canvas>
 
@@ -134,6 +134,9 @@
                   </button>
                   <button id="patrolBookButton" class="button button--paper" type="button" aria-controls="patrolBookScreen">
                     <span>Patrol Book</span>
+                  </button>
+                  <button id="travelButton" class="button button--paper title-action--travel" type="button" aria-controls="patrolBriefingScreen">
+                    <span>Czech cabin duty</span>
                   </button>
                 </div>
                 <p class="tiny-note"><span aria-hidden="true">✦</span> Best played with sharp eyes and an emergency piece of chicken. <button id="howButton" class="text-button" type="button" aria-controls="briefingScreen">How to guard</button></p>
@@ -392,6 +395,9 @@
             </button>
             <button id="nextWindowButton" class="game-control" type="button" aria-label="Next window across the flat" aria-keyshortcuts="ArrowRight" aria-controls="gameCanvas">
               <span aria-hidden="true">→</span>
+            </button>
+            <button id="switchFenceButton" class="fence-switch-button" type="button" aria-label="Switch to lower sheep fence" aria-keyshortcuts="ArrowUp ArrowDown" aria-controls="gameCanvas" hidden>
+              Switch to lower fence <span aria-hidden="true">↓</span>
             </button>
             <div class="chicken-control">
               <div class="chicken-control__meter" role="progressbar" aria-labelledby="chickenLabel chickenValue" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">

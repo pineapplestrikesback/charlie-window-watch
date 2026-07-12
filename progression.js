@@ -3,11 +3,13 @@ import {
   MODE_CONFIGS,
   PATROLS,
   RANKS,
+  TRAVEL_ASSIGNMENTS,
   getCollarTag,
   getDailyConfig,
   getNextPatrol,
   getPatrol,
   getRankForStampCount,
+  getTravelAssignment,
 } from "./content.js";
 import {
   HISTORY_LIMIT,
@@ -21,6 +23,7 @@ import {
 
 const MODE_IDS = new Set(Object.keys(MODE_CONFIGS));
 const PATROL_IDS = new Set(PATROLS.map((patrol) => patrol.id));
+const TRAVEL_ASSIGNMENT_IDS = new Set(TRAVEL_ASSIGNMENTS.map((assignment) => assignment.id));
 
 function plainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -55,9 +58,14 @@ export function normalizeRunResult(value, { now = Date.now() } = {}) {
   const inputStats = plainObject(source.stats);
   const requestedMode = source.mode;
   const patrolId = PATROL_IDS.has(source.patrolId) ? source.patrolId : null;
+  const requestedTravelAssignmentId = source.travelAssignmentId ?? source.assignmentId;
+  const knownTravelAssignmentId = TRAVEL_ASSIGNMENT_IDS.has(requestedTravelAssignmentId)
+    ? requestedTravelAssignmentId
+    : null;
   const mode = MODE_IDS.has(requestedMode)
     ? requestedMode
-    : patrolId ? "campaign" : "classic";
+    : patrolId ? "campaign" : knownTravelAssignmentId ? "travel" : "classic";
+  const travelAssignmentId = mode === "travel" ? knownTravelAssignmentId : null;
   const completed = source.completed === true
     || source.cleared === true
     || source.success === true
@@ -101,6 +109,7 @@ export function normalizeRunResult(value, { now = Date.now() } = {}) {
     id,
     mode,
     patrolId,
+    travelAssignmentId,
     dailyDateKey,
     completed,
     score,
@@ -164,6 +173,20 @@ export function evaluatePatrolObjectives(patrolId, value, options = {}) {
   }));
 }
 
+export function evaluateTravelObjectives(assignmentId, value, options = {}) {
+  const assignment = getTravelAssignment(assignmentId);
+  if (!assignment) return [];
+  const run = normalizeRunResult({
+    ...plainObject(value),
+    mode: "travel",
+    travelAssignmentId: assignmentId,
+  }, options);
+  return assignment.travelOrders.map((objective) => ({
+    objective,
+    achieved: evaluateObjective(objective, run, options),
+  }));
+}
+
 export function isPatrolUnlocked(profile, patrolId) {
   const normalized = normalizeProfile(profile);
   return normalized.campaign.unlockedPatrolIds.includes(patrolId);
@@ -212,7 +235,11 @@ function accumulateLifetime(draft, run) {
   lifetime.totalScore += run.score;
   lifetime.bestScore = Math.max(lifetime.bestScore, run.score);
   lifetime.secondsPlayed += run.durationSeconds;
-  for (const key of RUN_STAT_KEYS) lifetime[key] += run.stats[key];
+  for (const key of RUN_STAT_KEYS) {
+    lifetime[key] = key === "bestFlockSize"
+      ? Math.max(lifetime[key], run.stats[key])
+      : lifetime[key] + run.stats[key];
+  }
 
   const mode = lifetime.byMode[run.mode];
   mode.runs += 1;
@@ -226,7 +253,8 @@ function accumulateLifetime(draft, run) {
 function historyEntry(run, runNumber) {
   return {
     ...run,
-    id: run.id ?? `${run.endedAt}:${run.mode}:${run.patrolId ?? "open"}:${runNumber}`,
+    id: run.id
+      ?? `${run.endedAt}:${run.mode}:${run.patrolId ?? run.travelAssignmentId ?? "open"}:${runNumber}`,
   };
 }
 

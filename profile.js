@@ -2,6 +2,7 @@ import {
   COLLAR_TAGS,
   MODE_CONFIGS,
   PATROLS,
+  TRAVEL_ASSIGNMENTS,
   getCollarTagsForStampCount,
   getPatrol,
   getRankForStampCount,
@@ -27,10 +28,14 @@ export const RUN_STAT_KEYS = Object.freeze([
   "superGuards",
   "coatRepelled",
   "distinctWindowsGuarded",
+  "flockSettled",
+  "bestFlockSize",
+  "sheepBarks",
 ]);
 
 const MODE_IDS = new Set(Object.keys(MODE_CONFIGS));
 const PATROL_IDS = new Set(PATROLS.map((patrol) => patrol.id));
+const TRAVEL_ASSIGNMENT_IDS = new Set(TRAVEL_ASSIGNMENTS.map((assignment) => assignment.id));
 const COLLAR_TAG_IDS = new Set(COLLAR_TAGS.map((tag) => tag.id));
 
 function plainObject(value) {
@@ -91,6 +96,9 @@ function emptyLifetime() {
     superGuards: 0,
     coatRepelled: 0,
     distinctWindowsGuarded: 0,
+    flockSettled: 0,
+    bestFlockSize: 0,
+    sheepBarks: 0,
     byMode: Object.fromEntries(Object.keys(MODE_CONFIGS).map((mode) => [mode, emptyModeStats()])),
   };
 }
@@ -232,13 +240,18 @@ function normalizeHistoryEntry(value, index, fallbackTimestamp) {
   const source = plainObject(value);
   const mode = MODE_IDS.has(source.mode) ? source.mode : "classic";
   const patrolId = PATROL_IDS.has(source.patrolId) ? source.patrolId : null;
+  const requestedTravelAssignmentId = source.travelAssignmentId ?? source.assignmentId;
+  const travelAssignmentId = mode === "travel" && TRAVEL_ASSIGNMENT_IDS.has(requestedTravelAssignmentId)
+    ? requestedTravelAssignmentId
+    : null;
   const endedAt = timestamp(source.endedAt, fallbackTimestamp);
   return {
     id: typeof source.id === "string" && source.id.trim()
       ? source.id.slice(0, 160)
-      : `${endedAt}:${mode}:${patrolId ?? "open"}:${index + 1}`,
+      : `${endedAt}:${mode}:${patrolId ?? travelAssignmentId ?? "open"}:${index + 1}`,
     mode,
     patrolId,
+    travelAssignmentId,
     dailyDateKey: typeof source.dailyDateKey === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.dailyDateKey)
       ? source.dailyDateKey
       : null,
@@ -312,10 +325,12 @@ function normalizeLifetime(value, history, legacyBestScore, profileBestScore) {
   };
 
   for (const key of RUN_STAT_KEYS) {
-    lifetime[key] = Math.max(
-      integer(source[key]),
-      sumHistory(history, (entry) => entry.stats[key]),
-    );
+    lifetime[key] = key === "bestFlockSize"
+      ? Math.max(integer(source[key]), 0, ...history.map((entry) => entry.stats[key]))
+      : Math.max(
+        integer(source[key]),
+        sumHistory(history, (entry) => entry.stats[key]),
+      );
   }
   for (const mode of Object.keys(MODE_CONFIGS)) {
     lifetime.byMode[mode] = normalizeModeStats(byModeSource[mode], history, mode);
