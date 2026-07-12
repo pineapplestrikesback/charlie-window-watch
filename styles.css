@@ -4005,8 +4005,6 @@ body.is-fullscreen-lock {
 /* Immersive Patrol: the flat is the controller --------------------------- */
 
 .page-shell.is-fullscreen-mode .game-caption,
-.page-shell.is-fullscreen-mode .toast,
-.page-shell.is-fullscreen-mode .owner-bubble,
 .page-shell.is-fullscreen-mode .acoustic-feedback {
   display: none !important;
 }
@@ -4045,8 +4043,6 @@ body.is-immersive-play {
 .page-shell.is-immersive-mode #nextWindowButton,
 .page-shell.is-immersive-mode .chicken-control,
 .page-shell.is-immersive-mode .game-caption,
-.page-shell.is-immersive-mode .toast,
-.page-shell.is-immersive-mode .owner-bubble,
 .page-shell.is-immersive-mode .acoustic-feedback,
 .page-shell.is-immersive-mode main > :not(.game-panel),
 .page-shell.is-immersive-mode footer {
@@ -4324,6 +4320,120 @@ body[data-screen="paused"] .page-shell:not(.is-immersive-mode) .canvas-wrap {
   border-radius: 0.75rem;
 }
 
+/* Tactical feedback: visible when useful, compact enough to leave the windows clear. */
+.feedback-stack {
+  position: absolute;
+  z-index: 8;
+  bottom: 0.55rem;
+  left: 0.55rem;
+  display: flex;
+  width: min(18rem, calc(100% - 1.1rem));
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  pointer-events: none;
+}
+
+.feedback-stack .owner-bubble {
+  position: static;
+  inset: auto;
+  width: 100%;
+  max-height: none;
+  padding: 0.42rem 0.52rem;
+  overflow: hidden;
+  color: var(--paper);
+  background: rgba(36, 41, 39, 0.92);
+  border: 1px solid rgba(255, 250, 240, 0.72);
+  border-left: 0.25rem solid var(--mustard);
+  border-radius: 0.52rem;
+  box-shadow: 0 2px 0 rgba(36, 41, 39, 0.72);
+  animation: tactical-feedback-in 180ms ease-out both;
+}
+
+.feedback-stack .owner-bubble__eyebrow {
+  color: var(--mustard);
+  font-size: 0.46rem;
+  line-height: 1;
+}
+
+.feedback-stack .owner-bubble strong {
+  margin-top: 0.12rem;
+  overflow: hidden;
+  color: var(--paper);
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedback-stack #ownerBubbleText {
+  margin-top: 0.1rem;
+  overflow: hidden;
+  color: rgba(255, 250, 240, 0.78);
+  font-size: 0.52rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedback-stack .owner-quiet-meter {
+  grid-template-columns: auto minmax(4rem, 1fr);
+  gap: 0.35rem;
+  margin-top: 0.26rem;
+  color: var(--paper);
+  font-size: 0.44rem;
+  line-height: 1;
+}
+
+.feedback-stack .owner-quiet-meter progress {
+  height: 0.36rem;
+  border-color: rgba(255, 250, 240, 0.5);
+}
+
+.feedback-stack .owner-choice-hint {
+  margin-top: 0.2rem;
+  padding-top: 0.18rem;
+  overflow: hidden;
+  color: var(--mustard);
+  border-color: rgba(255, 250, 240, 0.24);
+  font-size: 0.47rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feedback-stack .toast {
+  position: static;
+  inset: auto;
+  max-width: 16rem;
+  padding: 0.28rem 0.5rem;
+  overflow: hidden;
+  border-width: 1px;
+  border-radius: 999px;
+  box-shadow: 0 2px 0 rgba(36, 41, 39, 0.72);
+  font-family: var(--sans);
+  font-size: 0.58rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: none;
+  animation: tactical-feedback-in 180ms ease-out both;
+}
+
+@keyframes tactical-feedback-in {
+  from { opacity: 0; transform: translateY(0.35rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-shell.is-immersive-mode .feedback-stack {
+  position: fixed;
+  z-index: 2650;
+  bottom: max(0.45rem, env(safe-area-inset-bottom));
+  left: max(0.45rem, env(safe-area-inset-left));
+  width: min(16rem, calc(100dvw - 4.7rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+}
+
 body[data-screen="playing"] .page-shell:not(.is-immersive-mode) #gameCanvas,
 body[data-screen="paused"] .page-shell:not(.is-immersive-mode) #gameCanvas {
   position: absolute;
@@ -4491,6 +4601,12 @@ body[data-screen="paused"] .pause-settings .switch-state {
 }
 
 @media (max-width: 620px) {
+  .feedback-stack {
+    bottom: 0.45rem;
+    left: 0.45rem;
+    width: min(15.5rem, calc(100% - 0.9rem));
+  }
+
   body[data-screen="playing"] .page-shell:not(.is-immersive-mode),
   body[data-screen="paused"] .page-shell:not(.is-immersive-mode) {
     width: calc(100% - 0.4rem);
@@ -4639,6 +4755,22 @@ body[data-screen="paused"] .pause-settings .switch-state {
 }
 
 @media (orientation: landscape) and (max-height: 620px) {
+  .feedback-stack,
+  .page-shell.is-immersive-mode .feedback-stack {
+    bottom: max(0.35rem, env(safe-area-inset-bottom));
+    left: max(0.35rem, env(safe-area-inset-left));
+    width: min(14rem, calc(100% - 4.5rem));
+  }
+
+  .feedback-stack .owner-bubble {
+    padding-block: 0.35rem;
+  }
+
+  .feedback-stack #ownerBubbleText,
+  .feedback-stack .owner-choice-hint {
+    display: none;
+  }
+
   body[data-screen="playing"] .page-shell:not(.is-immersive-mode),
   body[data-screen="paused"] .page-shell:not(.is-immersive-mode) {
     position: fixed;

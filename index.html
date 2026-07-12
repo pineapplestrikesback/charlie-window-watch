@@ -8,8 +8,8 @@
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Charlie: Window Watch</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23d66f4a'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-weight='700' fill='%23fffaf0'%3EC%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="styles.css?v=minimal-patrol-v3-2">
-    <script src="game.js?v=minimal-patrol-v3-2" type="module"></script>
+    <link rel="stylesheet" href="styles.css?v=minimal-patrol-v3-3">
+    <script src="game.js?v=minimal-patrol-v3-3" type="module"></script>
   </head>
 
   <body>
@@ -91,19 +91,21 @@
               Your browser needs canvas support to play Charlie: Window Watch.
             </canvas>
 
-            <div id="ownerBubble" class="owner-bubble visually-hidden" role="status" aria-live="polite" hidden>
-              <span class="owner-bubble__eyebrow">Owner attention</span>
-              <strong id="ownerBubbleTitle">Charlie… shush!</strong>
-              <span id="ownerBubbleText">Time for a tactical room change.</span>
-              <label class="owner-quiet-meter" for="ownerQuietProgress">
-                <span>Quiet response</span>
-                <progress id="ownerQuietProgress" max="100" value="0">0%</progress>
-              </label>
-              <small id="ownerChoiceHint" class="owner-choice-hint">Relocate, wait quietly, or find sound cover.</small>
+            <div class="feedback-stack">
+              <div id="toast" class="toast" hidden>Good guard!</div>
+              <div id="ownerBubble" class="owner-bubble" role="status" aria-live="polite" hidden>
+                <span class="owner-bubble__eyebrow">Owner listening</span>
+                <strong id="ownerBubbleTitle">SHUSH · Living room</strong>
+                <span id="ownerBubbleText">The owner is listening here.</span>
+                <label class="owner-quiet-meter" for="ownerQuietProgress">
+                  <span>Quiet response</span>
+                  <progress id="ownerQuietProgress" max="100" value="0">0%</progress>
+                </label>
+                <small id="ownerChoiceHint" class="owner-choice-hint">Relocate, wait quietly, or find sound cover.</small>
+              </div>
             </div>
 
             <div id="caption" class="game-caption visually-hidden">Living-room patrol ready. Three windows, zero nonsense.</div>
-            <div id="toast" class="toast visually-hidden" hidden>Good guard!</div>
 
             <section id="startScreen" class="screen-layer title-screen" aria-labelledby="title-heading">
               <div class="title-screen__photo">

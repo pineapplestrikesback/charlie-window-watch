@@ -1466,8 +1466,9 @@ function triggerWarning(roomIndex) {
   game.patience = game.listening.patience;
   game.warning = { room: roomIndex, startedAt: game.elapsed };
   game.listeningGraceUntil = game.elapsed + 0.48;
+  ui.ownerBubble.dataset.state = "listening";
   ui.ownerBubble.hidden = false;
-  ui.ownerBubbleTitle.textContent = "Charlie… shush!";
+  ui.ownerBubbleTitle.textContent = `SHUSH · ${ROOMS[roomIndex].name}`;
   ui.ownerBubbleText.textContent = `The owner is listening in the ${ROOMS[roomIndex].name}.`;
   ui.ownerChoiceHint.textContent = "Relocate for a Sneaky Bark, or stay quiet for 2.5 seconds.";
   ui.ownerQuietProgress.value = 0;
@@ -1503,7 +1504,7 @@ function patienceStrike(roomIndex) {
   syncListeningState();
   game.combo = 1;
   setPetReaction("failed");
-  ui.ownerBubbleTitle.textContent = game.patience <= 34 ? "Charlie. That is enough." : "Charlie… seriously?";
+  ui.ownerBubbleTitle.textContent = game.patience <= 34 ? "SHUSH · FINAL WARNING" : "SHUSH · HEARD AGAIN";
   ui.ownerBubbleText.textContent = `An audible bark cost ${result.patienceLost} Patience.`;
   ui.ownerQuietProgress.value = 0;
   showToast(`HEARD · Patience −${result.patienceLost}`, "warning");
@@ -1940,7 +1941,7 @@ function updateGame(dt) {
     game.ownerFollow = null;
     game.rooms[roomId].attention = 100;
     triggerWarning(roomId);
-    ui.ownerBubbleTitle.textContent = "I can still hear you…";
+    ui.ownerBubbleTitle.textContent = `STILL LISTENING · ${ROOMS[roomId].name}`;
     ui.ownerBubbleText.textContent = `The owner followed Charlie to the ${ROOMS[roomId].name}.`;
   }
 
